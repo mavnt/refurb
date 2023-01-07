@@ -1,9 +1,8 @@
-from collections import Counter
 from dataclasses import dataclass
 
-from mypy.nodes import ComparisonExpr, Expression, OpExpr
+from mypy.nodes import OpExpr
 
-from refurb.checks.common import extract_binary_oper
+from refurb.checks.common import get_common_expr_in_comparison_chain
 from refurb.error import Error
 
 
@@ -18,6 +17,11 @@ class ErrorInfo(Error):
     ```
     if x == y and x == z:
         pass
+
+    # and
+
+    if x is None and y is None
+        pass
     ```
 
     Good:
@@ -25,31 +29,38 @@ class ErrorInfo(Error):
     ```
     if x == y == z:
         pass
+
+    # and
+
+    if x is y is None:
+        pass
     ```
 
     Note: if `x` depends on side-effects, then this check should be ignored.
     """
 
     code = 124
-    msg: str = "Use `x == y == z` instead of `x == y and x == z`"
+    categories = ["logical", "readability"]
 
 
-def has_common_expr(exprs: tuple[Expression, ...]) -> bool:
-    count = Counter(str(x) for x in exprs).most_common(1)[0][1]
+def create_message(indices: tuple[int, int], oper: str = "==") -> str:
+    names = ["x", "y", "z"]
+    names.insert(indices[1], names[indices[0]])
 
-    return count > 1
+    expr = f"{names[0]} {oper} {names[1]} and {names[2]} {oper} {names[3]}"
+
+    return f"Replace `{expr}` with `x {oper} y {oper} z`"
 
 
 def check(node: OpExpr, errors: list[Error]) -> None:
-    exprs = extract_binary_oper("and", node)
+    for cmp_oper in ("==", "is"):
+        if data := get_common_expr_in_comparison_chain(node, "and", cmp_oper):
+            expr, indices = data
 
-    # TODO: remove when next mypy version is released
-    if not exprs:
-        return
-
-    match exprs:
-        case (
-            ComparisonExpr(operators=["=="], operands=[a, b]),
-            ComparisonExpr(operators=["=="], operands=[c, d]),
-        ) if has_common_expr((a, b, c, d)):
-            errors.append(ErrorInfo(a.line, a.column))
+            errors.append(
+                ErrorInfo(
+                    expr.line,
+                    expr.column,
+                    create_message(indices, cmp_oper),
+                )
+            )

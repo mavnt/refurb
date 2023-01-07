@@ -39,6 +39,7 @@ class ErrorInfo(Error):
 
     code = 129
     msg: str = "Replace `f.readlines()` with `f`"
+    categories = ["builtin", "readability"]
 
 
 def get_readline_file_object(expr: Expression) -> NameExpr | None:
@@ -48,7 +49,7 @@ def get_readline_file_object(expr: Expression) -> NameExpr | None:
                 expr=NameExpr(node=Var(type=ty)) as f, name="readlines"
             ),
             args=[],
-        ) if str(ty) == "io.TextIOWrapper":
+        ) if str(ty) in ("io.TextIOWrapper", "io.BufferedReader"):
             return f
 
     return None

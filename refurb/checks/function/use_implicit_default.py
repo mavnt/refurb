@@ -19,6 +19,7 @@ from mypy.nodes import (
 )
 from mypy.types import Instance
 
+from refurb.checks.common import is_equivalent
 from refurb.error import Error
 
 
@@ -50,6 +51,7 @@ class ErrorInfo(Error):
     ```
     """
 
+    enabled = False
     code = 120
     msg: str = "Don't pass an argument if it is the same as the default value"
 
@@ -148,7 +150,7 @@ def check_func(caller: CallExpr, func: FuncDef, errors: list[Error]) -> None:
         else:
             return  # pragma: no cover
 
-        if str(value) == str(default):
+        if default and is_equivalent(value, default):
             errors.append(ErrorInfo(value.line, value.column))
 
 

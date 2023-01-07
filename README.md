@@ -94,6 +94,59 @@ y = list()  # noqa
 Here, `noqa: FURB123` specifically ignores the FURB123 error for that line, and `noqa` ignores
 all errors on that line.
 
+## Enabling/Disabling Checks
+
+Certain checks are disabled by default, and need to be enabled first. You can do this using the
+`--enable ERR` flag, where `ERR` is the error code of the check you want to enable. A disabled
+check differs from an ignored check in that a disabled check will never be loaded, whereas an
+ignored check will be loaded, an error will be emitted, and the error will be suppressed.
+
+The opposite of `--enable` is `--disable`, which will disable a check. When `--enable` and `--disable`
+are both specified via the command line, whichever one comes last will take precedence. When using
+`enable` and `disable` via the config file, `disable` will always take precedence.
+
+Use the `--disable-all` flag to disable all checks. This allows you to incrementally `--enable` checks
+as you see fit, as opposed to adding a bunch of `--ignore` flags. To use this in the config file,
+set `disable_all` to `true`.
+
+Use the `--enable-all` flag to enable all checks by default. This allows you to opt into all checks
+that Refurb (and Refurb plugins) have to offer. This is a good option for new codebases. To use this
+in a config file, set `enable_all` to `true`.
+
+In the config file, `disable_all`/`enable_all` is applied first, and then the `enable` and `disable`
+fields are applied afterwards.
+
+> Note that `disable_all` and `enable_all` are mutually exclusive, both on the command line and in
+> the config file. You will get an error if you try to specify both.
+
+You can also disable checks by category using the `#category` syntax. For example, `--disable "#readability"`
+will disable all checks with the `readability` category. The same applies for `enable` and `ignore`.
+Also, if you disable an entire category you can still explicitly re-enable a check in that category.
+
+> Note that `#readability` is wrapped in quotes because your shell will interpret the `#` as the
+> start of a comment.
+
+## Setting Python Version
+
+Use the `--python-version` flag to tell Refurb which version of Python your codebase is using. This
+should allow for better detection of language features, and allow for better error messages. The argument
+for this flag must be in the form `x.y`, for example, `3.10`.
+
+## Overriding Mypy Flags
+
+This is typically used for development purposes, but can also be used to better fine-tune Mypy from
+within Refurb. Any command line arguments after `--` are passed to Mypy. For example:
+
+```
+$ refurb files -- --show-traceback
+```
+
+This tells Mypy to show a traceback if it crashes.
+
+You can also use this in the config file by assigning an array of values to the `mypy_args` field.
+Note that any Mypy arguments passed via the command line arguments will override the `mypy_args`
+field in the config file.
+
 ## Configuring Refurb
 
 In addition to the command line arguments, you can also add your settings in the `pyproject.toml` file.
@@ -112,8 +165,15 @@ load = ["some_module"]
 quiet = true
 ```
 
-Now all you need to type is `refurb file.py`! Supplying command line arguments will
-override any existing settings in the config file.
+Now all you need to type is `refurb file.py`!
+
+Note that the values in the config file will be merged with the values specified via the
+command line. In the case of boolean arguments like `--quiet`, the command line arguments
+take precedence. All other arguments (such as `ignore` and `load`) will be combined.
+
+You can use the `--config-file` flag to tell Refurb to use a different config file from the
+default `pyproject.toml` file. Note that it still must be in the same form as the normal
+`pyproject.toml` file.
 
 ## Using Refurb With `pre-commit`
 
@@ -165,7 +225,8 @@ files in the `refurb/checks/` folder for some examples.
 Then, to load your new check, use `refurb file.py --load your.path.here`
 
 > Note that when using `--load`, you need to use dots in your argument, just like
-> importing a normal python module.
+> importing a normal python module. If `your.path.here` is a directory, all checks
+> in that directory will be loaded. If it is a file, only that file will be loaded.
 
 ## Developing
 
@@ -200,3 +261,46 @@ the built-in linter for Rust.
 
 Refurb is not a style/type checker. It is not meant as a first-line of defense for
 linting and finding bugs, it is meant for making good code even better.
+
+## Comparison To Other Tools
+
+There are already lots of tools out there for linting and analyzing Python code, so
+you might be wondering why Refurb exists (skepticism is good!). As mentioned above,
+Refurb checks for code which can be made more elegant, something that no other linters
+(that I have found) specialize in. Here is a list of similar linters and analyzers,
+and how they differ from Refurb:
+
+[Black](https://github.com/psf/black): is more focused on the formatting and
+styling of the code (line length, trailing comas, indentation, and so on). It
+does a really good job of making other projects using Black look more or less
+the same. It doesn't do more complex things such as type checking or code
+smell/anti-pattern detection.
+
+[flake8](https://github.com/pycqa/flake8): flake8 is also a linter, is very extensible,
+and performs a lot of semantic analysis-related checks as well, such as "unused
+variable", "break outside of a loop", and so on. It also checks PEP8
+conformance. Refurb won't try and replace flake8, because chances are you
+are already using flake8 anyways.
+
+[Pylint](https://github.com/PyCQA/pylint) has [a lot of checks](https://pylint.pycqa.org/en/latest/user_guide/messages/messages_overview.html)
+which cover a lot of ground, but in general, are focused on bad or buggy
+code, things which you probably didn't mean to do. Refurb assumes that you
+know what you are doing, and will try to cleanup what is already there the best
+it can.
+
+[Mypy](https://github.com/python/mypy), [Pyright](https://github.com/Microsoft/pyright),
+[Pyre](https://github.com/facebook/pyre-check), and [Pytype](https://github.com/google/pytype)
+are all type checkers, and basically just enforce types, ensures arguments match,
+functions are called in a type safe manner, and so on. They do much more then that, but
+that is the general idea. Refurb actually is built on top of Mypy, and uses its AST
+parser so that it gets good type information.
+
+[pyupgrade](https://github.com/asottile/pyupgrade): Pyupgrade has a lot of good
+checks for upgrading your older Python code to the newer syntax, which is really
+useful. Where Refurb differs is that Pyupgrade is more focused on upgrading your
+code to the newer version, whereas Refurb is more focused on cleaning up and
+simplifying what is already there.
+
+In conclusion, Refurb doesn't want you to throw out your old tools, since
+they cover different areas of your code, and all serve a different purpose.
+Refurb is meant to be used in conjunction with the above tools.

@@ -14,14 +14,18 @@ from mypy.nodes import (
     ListExpr,
     MatchStmt,
     NameExpr,
+    Node,
+    OpExpr,
     StrExpr,
     TupleExpr,
+    UnaryExpr,
     Var,
     WhileStmt,
 )
 from mypy.traverser import TraverserVisitor
 
 from refurb.error import Error
+from refurb.visitor import METHOD_NODE_MAPPINGS
 
 
 @dataclass
@@ -56,6 +60,7 @@ class ErrorInfo(Error):
     """
 
     code = 115
+    categories = ["iterable", "truthy"]
 
 
 CONTAINER_TYPES = {
@@ -89,7 +94,18 @@ def is_builtin_container_like(node: Expression) -> bool:
     return False
 
 
-IS_COMPARISON_TRUTHY: dict[tuple[str, int], bool] = {
+def is_len_call(node: CallExpr) -> bool:
+    match node:
+        case CallExpr(
+            callee=NameExpr(fullname="builtins.len"),
+            args=[arg],
+        ) if is_builtin_container_like(arg):
+            return True
+
+    return False
+
+
+IS_INT_COMPARISON_TRUTHY: dict[tuple[str, int], bool] = {
     ("==", 0): False,
     ("<=", 0): False,
     (">", 0): True,
@@ -106,37 +122,61 @@ class LenComparisonVisitor(TraverserVisitor):
 
         self.errors = errors
 
-    def visit_comparison_expr(self, o: ComparisonExpr) -> None:
-        super().visit_comparison_expr(o)
+        for name, ty in METHOD_NODE_MAPPINGS.items():
+            if ty in (ComparisonExpr, UnaryExpr, OpExpr, CallExpr):
+                continue
 
-        check_comparison(o, self.errors)
-
-
-def check_comparison(node: ComparisonExpr, errors: list[Error]) -> None:
-    match node:
-        case ComparisonExpr(
-            operators=[oper],
-            operands=[
-                CallExpr(
-                    callee=NameExpr(fullname="builtins.len"),
-                    args=[arg],
-                ),
-                IntExpr(value=num),
-            ],
-        ) if is_builtin_container_like(arg):
-            is_truthy = IS_COMPARISON_TRUTHY.get((oper, num))
-
-            if is_truthy is None:
+            def inner(self: "LenComparisonVisitor", o: Node) -> None:
                 return
 
-            expr = "x" if is_truthy else "not x"
+            setattr(self, name, inner.__get__(self))
 
-            errors.append(
-                ErrorInfo(
-                    node.line,
-                    node.column,
-                    f"Use `{expr}` instead of `len(x) {oper} {num}`",
+    def visit_comparison_expr(self, node: ComparisonExpr) -> None:
+        match node:
+            case ComparisonExpr(
+                operators=[oper],
+                operands=[CallExpr() as call, IntExpr(value=num)],
+            ) if is_len_call(call):
+                is_truthy = IS_INT_COMPARISON_TRUTHY.get((oper, num))
+
+                if is_truthy is None:
+                    return
+
+                expr = "x" if is_truthy else "not x"
+
+                self.errors.append(
+                    ErrorInfo(
+                        node.line,
+                        node.column,
+                        f"Replace `len(x) {oper} {num}` with `{expr}`",
+                    )
                 )
+
+            case ComparisonExpr(
+                operators=["==" | "!=" as oper],
+                operands=[
+                    NameExpr() as name,
+                    (ListExpr() | DictExpr()) as expr,
+                ],
+            ) if is_builtin_container_like(name):
+                if expr.items:  # type: ignore
+                    return
+
+                old_expr = "[]" if isinstance(expr, ListExpr) else "{}"
+                expr = "not x" if oper == "==" else "x"
+
+                self.errors.append(
+                    ErrorInfo(
+                        node.line,
+                        node.column,
+                        f"Replace `x {oper} {old_expr}` with `{expr}`",
+                    )
+                )
+
+    def visit_call_expr(self, node: CallExpr) -> None:
+        if is_len_call(node):
+            self.errors.append(
+                ErrorInfo(node.line, node.column, "Replace `len(x)` with `x`")
             )
 
 

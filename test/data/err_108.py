@@ -18,6 +18,11 @@ _ = (
     or x == "def"
 )
 
+_ = x == "abc" or "def" == x
+_ = "abc" == x or "def" == x
+_ = "abc" == x or x == "def"
+
 # these should not
 
 _ = x == "abc" or y == "def"
+_ = x == "abc" or x == "def" and y == "ghi"

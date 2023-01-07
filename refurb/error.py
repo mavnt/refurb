@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import ClassVar, Optional
+from typing import ClassVar, NewType
 
 
 @dataclass(frozen=True)
@@ -17,15 +17,21 @@ class ErrorCode:
         return f"{self.prefix}{self.id}"
 
 
+ErrorCategory = NewType("ErrorCategory", str)
+
+ErrorClassifier = ErrorCategory | ErrorCode
+
+
 @dataclass
 class Error:
     enabled: ClassVar[bool] = True
     prefix: ClassVar[str] = "FURB"
+    categories: ClassVar[list[str]] = []
     code: ClassVar[int]
     line: int
     column: int
     msg: str
-    filename: Optional[str] = None
+    filename: str | None = None
 
     def __str__(self) -> str:
         return f"{self.filename}:{self.line}:{self.column + 1} [{self.prefix}{self.code}]: {self.msg}"  # noqa: E501

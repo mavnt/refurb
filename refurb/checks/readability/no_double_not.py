@@ -26,7 +26,8 @@ class ErrorInfo(Error):
     """
 
     code = 114
-    msg: str = "Use `bool(x)` instead of `not not x`"
+    msg: str = "Replace `not not x` with `bool(x)`"
+    categories = ["builtin", "readability", "truthy"]
 
 
 def check(node: UnaryExpr, errors: list[Error]) -> None:

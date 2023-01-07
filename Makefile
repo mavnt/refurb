@@ -3,7 +3,7 @@
 all: flake8 mypy black isort test refurb
 
 install:
-	pip install -r requirements.txt
+	pip install .
 	pip install -r dev-requirements.txt
 
 install-local:
@@ -13,8 +13,8 @@ flake8:
 	flake8
 
 mypy:
-	mypy -p refurb
-	mypy -p test --exclude "test/data/*"
+	mypy refurb
+	mypy test --exclude "test/data*"
 
 black:
 	black refurb test
@@ -29,4 +29,9 @@ test-e2e: install-local
 	refurb test/e2e/dummy.py
 
 refurb:
-	refurb refurb
+	refurb refurb test/*.py
+
+test/data/%.txt: test/data/%.py
+	refurb "$^" --enable-all --quiet > "$@" || true
+
+update-tests: $(patsubst %.py,%.txt,$(wildcard test/data/*.py))

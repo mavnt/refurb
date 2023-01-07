@@ -31,16 +31,11 @@ class ErrorInfo(Error):
     """
 
     code = 102
+    categories = ["string"]
 
 
 def check(node: OpExpr, errors: list[Error]) -> None:
-    exprs = extract_binary_oper("or", node)
-
-    # TODO: remove when next mypy version is released
-    if not exprs:
-        return
-
-    match exprs:
+    match extract_binary_oper("or", node):
         case (
             CallExpr(
                 callee=MemberExpr(

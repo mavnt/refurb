@@ -1,5 +1,6 @@
 import os
 from dataclasses import dataclass
+from importlib import metadata
 from locale import LC_ALL, setlocale
 from unittest.mock import patch
 
@@ -7,7 +8,7 @@ import pytest
 
 from refurb.error import Error
 from refurb.main import main, run_refurb, sort_errors
-from refurb.settings import Settings
+from refurb.settings import Settings, load_settings, parse_command_line_args
 
 
 def test_invalid_args_returns_error_code():
@@ -134,8 +135,23 @@ def test_no_blank_line_printed_if_there_are_no_errors():
         assert p.call_count == 0
 
 
+def test_invalid_checks_returns_nice_message() -> None:
+    with patch("builtins.print") as p:
+        args = [
+            "test/e2e/dummy.py",
+            "--load",
+            "test.invalid_checks.invalid_check",
+        ]
+
+        main(args)
+
+        expected = 'test/invalid_checks/invalid_check.py:13: "int" is not a valid Mypy node type'
+
+        assert expected in str(p.call_args[0][0])
+
+
 @pytest.mark.skipif(not os.getenv("CI"), reason="Locale installation required")
-def test_utf8_is_used_to_load_files_when_error_occurs():  # type: ignore
+def test_utf8_is_used_to_load_files_when_error_occurs() -> None:
     """
     See issue https://github.com/dosisod/refurb/issues/37. This check will
     set the zh_CN.GBK locale, run a particular file, and if all goes well,
@@ -154,3 +170,31 @@ def test_utf8_is_used_to_load_files_when_error_occurs():  # type: ignore
         raise
 
     setlocale(LC_ALL, "")
+
+
+def test_load_custom_config_file():
+    args = [
+        "test/data/err_101.py",
+        "--quiet",
+        "--config-file",
+        "test/config/config.toml",
+    ]
+
+    errors = run_refurb(load_settings(args))
+
+    assert not errors
+
+
+def test_mypy_args_are_forwarded() -> None:
+    errors = run_refurb(Settings(mypy_args=["--version"]))
+
+    assert len(errors) == 1
+    assert isinstance(errors[0], str)
+    assert errors[0].startswith(f"mypy {metadata.version('mypy')}")
+
+
+def test_stub_files_dont_hide_errors() -> None:
+    errors = run_refurb(parse_command_line_args(["test/e2e/stub_pkg"]))
+
+    assert len(errors) == 1
+    assert "FURB123" in str(errors[0])

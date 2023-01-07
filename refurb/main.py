@@ -20,7 +20,9 @@ from .visitor import RefurbVisitor
 def usage() -> None:
     print(
         """\
-usage: refurb [--ignore err] [--load path] [--debug] [--quiet] src [srcs...]
+usage: refurb [--ignore err] [--load path] [--debug] [--quiet] [--enable err]
+              [--disable err] [--disable-all] [--enable-all]
+              [--config-file path] [--python-version version] src [srcs...]
        refurb [--help | -h]
        refurb [--version | -v]
        refurb --explain err
@@ -28,14 +30,20 @@ usage: refurb [--ignore err] [--load path] [--debug] [--quiet] src [srcs...]
 
 Command Line Options:
 
--h, --help       This help menu.
---version, -v    Print version information.
---ignore err     Ignore an error. Can be repeated.
---load module    Add a module to the list of paths to be searched when looking
-                 for checks. Can be repeated.
---debug          Print the AST representation of all files that where checked.
---quiet          Suppress default "--explain" suggestion when an error occurs.
-src              A file or folder.
+--help, -h            This help menu.
+--version, -v         Print version information.
+--ignore err          Ignore an error. Can be repeated.
+--load module         Add a module to the list of paths to be searched when looking for checks. Can be repeated.
+--debug               Print the AST representation of all files that where checked.
+--quiet               Suppress default "--explain" suggestion when an error occurs.
+--enable err          Load a check which is disabled by default.
+--disable err         Disable loading a check which is enabled by default.
+--config-file file    Load "file" instead of the default config file.
+--explain err         Print the explaination/documentation from a given error code.
+--disable-all         Disable all checks by default.
+--enable-all          Enable all checks by default.
+--python-version x.y  Version of the Python code being checked.
+src                   A file or folder.
 
 
 Subcommands:
@@ -75,20 +83,38 @@ def ignored_via_comment(error: Error | str) -> bool:
 
 
 def run_refurb(settings: Settings) -> Sequence[Error | str]:
+    stdout = StringIO()
     stderr = StringIO()
 
     try:
-        files, opt = process_options(settings.files or [], stderr=stderr)
+        args = [
+            *settings.files,
+            *settings.mypy_args,
+            "--exclude",
+            ".*\\.pyi",
+            "--explicit-package-bases",
+            "--namespace-packages",
+        ]
+
+        files, opt = process_options(args, stdout=stdout, stderr=stderr)
 
     except SystemExit:
-        return ["refurb: " + err for err in stderr.getvalue().splitlines()]
+        lines = ["refurb: " + err for err in stderr.getvalue().splitlines()]
+
+        return lines + stdout.getvalue().splitlines()
 
     finally:
+        stdout.close()
         stderr.close()
 
     opt.incremental = True
     opt.fine_grained_incremental = True
     opt.cache_fine_grained = True
+    opt.allow_redefinition = True
+    opt.local_partial_types = True
+
+    if settings.python_version:
+        opt.python_version = settings.python_version  # pragma: no cover
 
     try:
         result = build(files, options=opt)
@@ -104,7 +130,7 @@ def run_refurb(settings: Settings) -> Sequence[Error | str]:
                 errors.append(str(tree))
 
             checks = load_checks(settings)
-            visitor = RefurbVisitor(checks)
+            visitor = RefurbVisitor(checks, settings)
 
             tree.accept(visitor)
 
@@ -138,7 +164,7 @@ def format_errors(errors: Sequence[Error | str], quiet: bool) -> str:
     done = "\n".join((str(error) for error in errors))
 
     if not quiet and any(isinstance(error, Error) for error in errors):
-        done += "\n\nRun `refurb --explain ERR` to further explain an error. Use `--quiet` to silence this message"  # noqa: E501
+        done += "\n\nRun `refurb --explain ERR` to further explain an error. Use `--quiet` to silence this message"
 
     return done
 
@@ -171,7 +197,12 @@ def main(args: list[str]) -> int:
 
         return 0
 
-    errors = run_refurb(settings)
+    try:
+        errors = run_refurb(settings)
+
+    except TypeError as e:
+        print(e)
+        return 1
 
     if formatted_errors := format_errors(errors, settings.quiet):
         print(formatted_errors)

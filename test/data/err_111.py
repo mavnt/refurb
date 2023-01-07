@@ -6,7 +6,7 @@ def f(x, y):
 
 lambda: print()
 lambda x: bool(x)
-lambda x, q: f(x, q)
+lambda x, y: f(x, y)
 
 
 # these will not
@@ -16,4 +16,6 @@ lambda x: f(x, True)
 lambda x, y: f(y, x)
 lambda x: bool(x + 1)
 lambda x: x + 1
+lambda x: print(*x)
+lambda x: print(**x)
 lambda: True

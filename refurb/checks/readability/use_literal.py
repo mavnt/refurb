@@ -27,6 +27,7 @@ class ErrorInfo(Error):
     """
 
     code = 112
+    categories = ["pythonic", "readability"]
 
 
 FUNC_NAMES = {
@@ -52,6 +53,6 @@ def check(node: CallExpr, errors: list[Error]) -> None:
                 ErrorInfo(
                     node.line,
                     node.column,
-                    f"Use `{literal}` instead of `{name}()`",
+                    f"Replace `{name}()` with `{literal}`",
                 )
             )

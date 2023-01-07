@@ -1,31 +1,87 @@
+from __future__ import annotations
+
 import re
-from dataclasses import dataclass
+import sys
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Iterator
 
-try:
-    import tomllib  # type: ignore
-except ImportError:
-    import tomli as tomllib  # type: ignore
+if sys.version_info >= (3, 11):
+    import tomllib  # pragma: no cover
+else:
+    import tomli as tomllib  # pragma: no cover
 
-
-from .error import ErrorCode
+from .error import ErrorCategory, ErrorClassifier, ErrorCode
 
 
 @dataclass
 class Settings:
-    files: list[str] | None = None
+    files: list[str] = field(default_factory=list)
     explain: ErrorCode | None = None
-    ignore: set[ErrorCode] | None = None
-    load: list[str] | None = None
-    enable: set[ErrorCode] | None = None
+    ignore: set[ErrorClassifier] = field(default_factory=set)
+    load: list[str] = field(default_factory=list)
+    enable: set[ErrorClassifier] = field(default_factory=set)
+    disable: set[ErrorClassifier] = field(default_factory=set)
     debug: bool = False
     generate: bool = False
     help: bool = False
     version: bool = False
     quiet: bool = False
+    enable_all: bool = False
+    disable_all: bool = False
+    config_file: str | None = None
+    python_version: tuple[int, int] | None = None
+    mypy_args: list[str] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        if self.enable_all and self.disable_all:
+            raise ValueError(
+                'refurb: "enable all" and "disable all" can\'t be used at the same time'  # noqa: E501
+            )
+
+    @staticmethod
+    def merge(old: Settings, new: Settings) -> Settings:
+        if not old.disable_all and new.disable_all:
+            enable = new.enable
+            disable = set()
+
+        elif not old.enable_all and new.enable_all:
+            disable = new.disable
+            enable = set()
+
+        else:
+            disable = old.disable | new.disable
+            enable = (old.enable | new.enable) - disable
+
+        return Settings(
+            files=old.files + new.files,
+            explain=old.explain or new.explain,
+            ignore=old.ignore | new.ignore,
+            enable=enable,
+            disable=disable,
+            load=old.load + new.load,
+            debug=old.debug or new.debug,
+            generate=old.generate or new.generate,
+            help=old.help or new.help,
+            version=old.version or new.version,
+            disable_all=old.disable_all or new.disable_all,
+            enable_all=old.enable_all or new.enable_all,
+            quiet=old.quiet or new.quiet,
+            config_file=old.config_file or new.config_file,
+            python_version=old.python_version or new.python_version,
+            mypy_args=new.mypy_args or old.mypy_args,
+        )
 
 
 ERROR_ID_REGEX = re.compile("^([A-Z]{3,4})?(\\d{3})$")
+
+
+def parse_error_classifier(err: str) -> ErrorCategory | ErrorCode:
+    return parse_error_category(err) or parse_error_id(err)
+
+
+def parse_error_category(err: str) -> ErrorCategory | None:
+    return ErrorCategory(err[1:]) if err.startswith("#") else None
 
 
 def parse_error_id(err: str) -> ErrorCode:
@@ -37,24 +93,49 @@ def parse_error_id(err: str) -> ErrorCode:
     raise ValueError(f'refurb: "{err}" must be in form FURB123 or 123')
 
 
+def parse_python_version(version: str) -> tuple[int, int]:
+    nums = version.split(".")
+
+    if len(nums) == 2 and all(num.isnumeric() for num in nums):
+        return tuple(int(num) for num in nums)[:2]  # type: ignore
+
+    raise ValueError("refurb: version must be in form `x.y`")
+
+
 def parse_config_file(contents: str) -> Settings:
     config = tomllib.loads(contents)
 
     if tool := config.get("tool"):
-        if settings := tool.get("refurb"):
-            ignore = set(
-                parse_error_id(str(x)) for x in settings.get("ignore", [])
-            )
+        if config := tool.get("refurb"):
+            ignore = {
+                parse_error_classifier(str(x))
+                for x in config.get("ignore", [])
+            }
 
-            enable = set(
-                parse_error_id(str(x)) for x in settings.get("enable", [])
-            )
+            enable = {
+                parse_error_classifier(str(x))
+                for x in config.get("enable", [])
+            }
+
+            disable = {
+                parse_error_classifier(str(x))
+                for x in config.get("disable", [])
+            }
+
+            version = config.get("python_version")
+            python_version = parse_python_version(version) if version else None
+            mypy_args = [str(x) for x in config.get("mypy_args", [])]
 
             return Settings(
-                ignore=ignore or None,
-                enable=enable or None,
-                load=settings.get("load"),
-                quiet=settings.get("quiet", False),
+                ignore=ignore,
+                enable=enable - disable,
+                disable=disable,
+                load=config.get("load", []),
+                quiet=config.get("quiet", False),
+                disable_all=config.get("disable_all", False),
+                enable_all=config.get("enable_all", False),
+                python_version=python_version,
+                mypy_args=mypy_args,
             )
 
     return Settings()
@@ -71,88 +152,86 @@ def parse_command_line_args(args: list[str]) -> Settings:
         return Settings(generate=True)
 
     iargs = iter(args)
-    files: list[str] = []
-    ignore: set[ErrorCode] = set()
-    enable: set[ErrorCode] = set()
-    load: list[str] = []
-    explain: ErrorCode | None = None
-    debug = False
-    quiet = False
+
+    settings = Settings()
+
+    def get_next_arg(arg: str, args: Iterator[str]) -> str:
+        if (value := next(args, None)) is not None:
+            return value
+
+        raise ValueError(f'refurb: missing argument after "{arg}"')
 
     for arg in iargs:
         if arg == "--debug":
-            debug = True
+            settings.debug = True
 
         elif arg == "--quiet":
-            quiet = True
+            settings.quiet = True
+
+        elif arg == "--disable-all":
+            settings.enable.clear()
+            settings.disable_all = True
+
+        elif arg == "--enable-all":
+            settings.disable.clear()
+            settings.enable_all = True
 
         elif arg == "--explain":
-            value = next(iargs, None)
-
-            if value is None:
-                raise ValueError(f'refurb: missing argument after "{arg}"')
-
-            explain = parse_error_id(value)
+            settings.explain = parse_error_id(get_next_arg(arg, iargs))
 
         elif arg == "--ignore":
-            value = next(iargs, None)
+            classifiers = get_next_arg(arg, iargs).split(",")
 
-            if value is None:
-                raise ValueError(f'refurb: missing argument after "{arg}"')
-
-            ignore.add(parse_error_id(value))
+            settings.ignore.update(map(parse_error_classifier, classifiers))
 
         elif arg == "--enable":
-            value = next(iargs, None)
+            error_codes = {
+                parse_error_classifier(classifier)
+                for classifier in get_next_arg(arg, iargs).split(",")
+            }
 
-            if value is None:
-                raise ValueError(f'refurb: missing argument after "{arg}"')
+            settings.enable |= error_codes
+            settings.disable -= error_codes
 
-            enable.add(parse_error_id(value))
+        elif arg == "--disable":
+            error_codes = {
+                parse_error_classifier(classifier)
+                for classifier in get_next_arg(arg, iargs).split(",")
+            }
+
+            settings.disable |= error_codes
+            settings.enable -= error_codes
 
         elif arg == "--load":
-            value = next(iargs, None)
+            settings.load.append(get_next_arg(arg, iargs))
 
-            if value is None:
-                raise ValueError(f'refurb: missing argument after "{arg}"')
+        elif arg == "--config-file":
+            settings.config_file = get_next_arg(arg, iargs)
 
-            load.append(value)
+        elif arg == "--python-version":
+            version = get_next_arg(arg, iargs)
+
+            settings.python_version = parse_python_version(version)
+
+        elif arg == "--":
+            settings.mypy_args = list(iargs)
 
         elif arg.startswith("-"):
             raise ValueError(f'refurb: unsupported option "{arg}"')
 
         else:
-            files.append(arg)
+            settings.files.append(arg)
 
-    return Settings(
-        files=files or None,
-        ignore=ignore or None,
-        enable=enable or None,
-        load=load or None,
-        debug=debug,
-        explain=explain,
-        quiet=quiet,
-    )
-
-
-def merge_settings(command_line: Settings, config_file: Settings) -> Settings:
-    if not command_line.ignore:
-        command_line.ignore = config_file.ignore
-
-    if not command_line.enable:
-        command_line.enable = config_file.enable
-
-    if not command_line.load:
-        command_line.load = config_file.load
-
-    return command_line
+    return settings
 
 
 def load_settings(args: list[str]) -> Settings:
-    file = Path("pyproject.toml")
+    cli_args = parse_command_line_args(args)
+
+    file = Path(cli_args.config_file or "pyproject.toml")
 
     config_file = (
         parse_config_file(file.read_text()) if file.exists() else Settings()
     )
 
-    return merge_settings(parse_command_line_args(args), config_file)
+    return Settings.merge(config_file, cli_args)
