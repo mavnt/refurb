@@ -32,6 +32,7 @@ class ErrorInfo(Error):
     ```
     """
 
+    name = "use-fstring-format"
     code = 119
     categories = ["builtin", "fstring"]
 
@@ -60,12 +61,10 @@ def check(node: CallExpr, errors: list[Error]) -> None:
                     args=[_],
                 ) if fullname in CONVERSIONS:
                     func_name = f"{{{func.name}(x)}}"
-                    conversion = f"{{{CONVERSIONS[fullname or '']}}}"
+                    conversion = f"{{{CONVERSIONS[fullname or '']}}}"  # noqa: FURB143, E501
 
                     errors.append(
-                        ErrorInfo(
-                            node.line,
-                            node.column,
-                            f"Replace `{func_name}` with `{conversion}`",
+                        ErrorInfo.from_node(
+                            node, f"Replace `{func_name}` with `{conversion}`"
                         )
                     )

@@ -28,6 +28,7 @@ class ErrorInfo(Error):
     ```
     """
 
+    name = "use-math-constant"
     code = 152
     categories = ["math", "readability"]
 
@@ -43,14 +44,12 @@ def check(node: FloatExpr, errors: list[Error]) -> None:
     num = str(node.value)
 
     if len(num) <= 3:
-        return None
+        return
 
     for name, value in CONSTANTS.items():
         if num.startswith(value):
             errors.append(
-                ErrorInfo(
-                    node.line,
-                    node.column,
-                    f"Replace `{num}` with `math.{name}`",
+                ErrorInfo.from_node(
+                    node, f"Replace `{num}` with `math.{name}`"
                 )
             )

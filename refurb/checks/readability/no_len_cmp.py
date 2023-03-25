@@ -59,6 +59,7 @@ class ErrorInfo(Error):
     ```
     """
 
+    name = "no-len-compare"
     code = 115
     categories = ["iterable", "truthy"]
 
@@ -74,8 +75,12 @@ CONTAINER_TYPES = {
 }
 
 
-def is_builtin_container_type(type: str) -> bool:
-    return any(type.startswith(x) for x in CONTAINER_TYPES)
+def is_builtin_container_type(ty: str | None) -> bool:
+    # Kept for compatibility with older Mypy versions
+    if not ty:
+        return False  # pragma: no cover
+
+    return any(ty.startswith(x) for x in CONTAINER_TYPES)
 
 
 def is_builtin_container_like(node: Expression) -> bool:
@@ -85,7 +90,7 @@ def is_builtin_container_like(node: Expression) -> bool:
 
         case CallExpr(
             callee=NameExpr(fullname=name)
-        ) if is_builtin_container_type(name or ""):
+        ) if is_builtin_container_type(name):
             return True
 
         case DictExpr() | ListExpr() | StrExpr() | TupleExpr():
@@ -126,7 +131,7 @@ class LenComparisonVisitor(TraverserVisitor):
             if ty in (ComparisonExpr, UnaryExpr, OpExpr, CallExpr):
                 continue
 
-            def inner(self: "LenComparisonVisitor", o: Node) -> None:
+            def inner(self: "LenComparisonVisitor", _: Node) -> None:
                 return
 
             setattr(self, name, inner.__get__(self))
@@ -145,10 +150,8 @@ class LenComparisonVisitor(TraverserVisitor):
                 expr = "x" if is_truthy else "not x"
 
                 self.errors.append(
-                    ErrorInfo(
-                        node.line,
-                        node.column,
-                        f"Replace `len(x) {oper} {num}` with `{expr}`",
+                    ErrorInfo.from_node(
+                        node, f"Replace `len(x) {oper} {num}` with `{expr}`"
                     )
                 )
 
@@ -166,17 +169,15 @@ class LenComparisonVisitor(TraverserVisitor):
                 expr = "not x" if oper == "==" else "x"
 
                 self.errors.append(
-                    ErrorInfo(
-                        node.line,
-                        node.column,
-                        f"Replace `x {oper} {old_expr}` with `{expr}`",
+                    ErrorInfo.from_node(
+                        node, f"Replace `x {oper} {old_expr}` with `{expr}`"
                     )
                 )
 
     def visit_call_expr(self, node: CallExpr) -> None:
         if is_len_call(node):
             self.errors.append(
-                ErrorInfo(node.line, node.column, "Replace `len(x)` with `x`")
+                ErrorInfo.from_node(node, "Replace `len(x)` with `x`")
             )
 
 

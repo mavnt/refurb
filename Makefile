@@ -1,6 +1,6 @@
-.PHONY: install flake8 mypy black isort test test-e2e refurb
+.PHONY: install ruff mypy black isort test test-e2e refurb docs
 
-all: flake8 mypy black isort test refurb
+all: ruff mypy black isort test refurb docs
 
 install:
 	pip install .
@@ -9,8 +9,8 @@ install:
 install-local:
 	pip install -e .
 
-flake8:
-	flake8
+ruff:
+	ruff refurb test
 
 mypy:
 	mypy refurb
@@ -31,7 +31,10 @@ test-e2e: install-local
 refurb:
 	refurb refurb test/*.py
 
-test/data/%.txt: test/data/%.py
+test/%.txt: test/%.py
 	refurb "$^" --enable-all --quiet > "$@" || true
 
-update-tests: $(patsubst %.py,%.txt,$(wildcard test/data/*.py))
+update-tests: $(patsubst %.py,%.txt,$(wildcard test/data*/*.py))
+
+docs:
+	python3 -m docs.gen_checks

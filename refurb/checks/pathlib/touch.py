@@ -34,6 +34,7 @@ class ErrorInfo(Error):
     exist beforehand this check may be for you.
     """
 
+    name = "use-pathlib-touch"
     enabled = False
     code = 151
     categories = ["pathlib"]
@@ -55,9 +56,7 @@ def check(node: CallExpr, errors: list[Error]) -> None:
             new = "x.touch()" if is_pathlike(arg) else "Path(x).touch()"
 
             errors.append(
-                ErrorInfo(
-                    node.line,
-                    node.column,
-                    f'Replace `open(x, "{mode}").close()` with `{new}`',
+                ErrorInfo.from_node(
+                    node, f'Replace `open(x, "{mode}").close()` with `{new}`'
                 )
             )

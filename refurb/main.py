@@ -1,9 +1,9 @@
 import re
-from functools import cache
+from collections.abc import Sequence
+from functools import cache, partial
 from importlib import metadata
 from io import StringIO
 from pathlib import Path
-from typing import Sequence
 
 from mypy.build import build
 from mypy.errors import CompileError
@@ -66,20 +66,54 @@ def get_source_lines(filepath: str) -> list[str]:
     return Path(filepath).read_text("utf8").splitlines()
 
 
-def ignored_via_comment(error: Error | str) -> bool:
-    if isinstance(error, str) or not error.filename:
-        return False
+def is_ignored_via_comment(error: Error) -> bool:
+    assert error.filename
 
-    line = get_source_lines(error.filename)[error.line - 1]
+    line = get_source_lines(error.filename)[error.line - 1].rstrip()
 
-    if comment := re.search("# noqa(: [A-Z]{3,4}\\d{3})?$", line):
-        ignore = comment.group(1)
-        error_code = str(ErrorCode.from_error(type(error)))
+    if comment := re.search(r"""# noqa(: [^'"]*)?$""", line):
+        ignore = str(ErrorCode.from_error(type(error)))
+        error_codes = comment.group(1)
 
-        if not ignore or ignore[2:] == error_code:
-            return True
+        return not error_codes or any(
+            error_code == ignore
+            for error_code in error_codes[2:].replace(",", " ").split(" ")
+        )
 
     return False
+
+
+def is_ignored_via_amend(error: Error, settings: Settings) -> bool:
+    assert error.filename
+
+    path = Path(error.filename).resolve()
+    error_code = ErrorCode.from_error(type(error))
+    config_root = (
+        Path(settings.config_file).parent if settings.config_file else Path()
+    )
+
+    for ignore in settings.ignore:
+        if ignore.path:
+            ignore_path = (config_root / ignore.path).resolve()
+
+            if path.is_relative_to(ignore_path):
+                if isinstance(ignore, ErrorCode):
+                    return str(ignore) == str(error_code)
+
+                return ignore.value in error.categories
+
+    return False
+
+
+def should_ignore_error(error: Error | str, settings: Settings) -> bool:
+    if isinstance(error, str):
+        return False
+
+    return (
+        not error.filename
+        or is_ignored_via_comment(error)
+        or is_ignored_via_amend(error, settings)
+    )
 
 
 def run_refurb(settings: Settings) -> Sequence[Error | str]:
@@ -112,9 +146,7 @@ def run_refurb(settings: Settings) -> Sequence[Error | str]:
     opt.cache_fine_grained = True
     opt.allow_redefinition = True
     opt.local_partial_types = True
-
-    if settings.python_version:
-        opt.python_version = settings.python_version  # pragma: no cover
+    opt.python_version = settings.python_version
 
     try:
         result = build(files, options=opt)
@@ -140,16 +172,29 @@ def run_refurb(settings: Settings) -> Sequence[Error | str]:
             errors += visitor.errors
 
     return sorted(
-        [error for error in errors if not ignored_via_comment(error)],
-        key=sort_errors,
+        [
+            error
+            for error in errors
+            if not should_ignore_error(error, settings)
+        ],
+        key=partial(sort_errors, settings=settings),
     )
 
 
 def sort_errors(
-    error: Error | str,
-) -> tuple[str, int, int, str, int] | tuple[str, str]:
+    error: Error | str, settings: Settings
+) -> tuple[str | int, ...]:
     if isinstance(error, str):
         return ("", error)
+
+    if settings.sort_by == "error":
+        return (
+            error.prefix,
+            error.code,
+            error.filename or "",
+            error.line,
+            error.column,
+        )
 
     return (
         error.filename or "",
@@ -160,10 +205,32 @@ def sort_errors(
     )
 
 
-def format_errors(errors: Sequence[Error | str], quiet: bool) -> str:
-    done = "\n".join((str(error) for error in errors))
+def format_as_github_annotation(error: Error | str) -> str:
+    if isinstance(error, str):
+        return f"::error title=Refurb Error::{error}"
 
-    if not quiet and any(isinstance(error, Error) for error in errors):
+    assert error.filename
+
+    file = Path(error.filename).resolve().relative_to(Path.cwd())
+
+    return "::error " + ",".join(
+        [
+            f"line={error.line}",
+            f"col={error.column + 1}",
+            f"title=Refurb {error.prefix}{error.code}",
+            f"file={file}::{error.msg}",
+        ]
+    )
+
+
+def format_errors(errors: Sequence[Error | str], settings: Settings) -> str:
+    formatter = (
+        format_as_github_annotation if settings.format == "github" else str
+    )
+
+    done = "\n".join(formatter(error) for error in errors)  # type: ignore
+
+    if not settings.quiet and any(isinstance(err, Error) for err in errors):
         done += "\n\nRun `refurb --explain ERR` to further explain an error. Use `--quiet` to silence this message"
 
     return done
@@ -204,7 +271,7 @@ def main(args: list[str]) -> int:
         print(e)
         return 1
 
-    if formatted_errors := format_errors(errors, settings.quiet):
+    if formatted_errors := format_errors(errors, settings):
         print(formatted_errors)
 
     return 1 if errors else 0

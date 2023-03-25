@@ -6,6 +6,7 @@ from mypy.nodes import (
     CallExpr,
     MypyFile,
     NameExpr,
+    RefExpr,
     Statement,
     WithStmt,
 )
@@ -39,6 +40,7 @@ class ErrorInfo(Error):
     ```
     """
 
+    name = "no-with-assign"
     code = 127
     msg: str = "This variable is redeclared later, and can be removed here"
     categories = ["readability", "scoping"]
@@ -70,12 +72,12 @@ def check_stmts(body: list[Statement], errors: list[Error]) -> None:
                     for resource in resources:
                         match resource:
                             case CallExpr(
-                                callee=NameExpr(fullname="contextlib.suppress")
+                                callee=RefExpr(fullname="contextlib.suppress")
                             ):
                                 break
 
                     else:
-                        errors.append(ErrorInfo(assign.line, assign.column))
+                        errors.append(ErrorInfo.from_node(assign))
 
             assign = None
 

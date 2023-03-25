@@ -52,6 +52,7 @@ class ErrorInfo(Error):
     ```
     """
 
+    name = "no-redundant-cast"
     code = 123
     categories = ["readability"]
 
@@ -85,7 +86,8 @@ def check(node: CallExpr, errors: list[Error]) -> None:
             node_type, msg = FUNC_NAMES[fullname]
 
             if type(arg) == node_type:
-                pass
+                if isinstance(arg, DictExpr | ListExpr):
+                    msg = "x"
 
             elif is_boolean_literal(arg) and name == "bool":
                 pass
@@ -102,9 +104,5 @@ def check(node: CallExpr, errors: list[Error]) -> None:
                         return
 
             errors.append(
-                ErrorInfo(
-                    node.line,
-                    node.column,
-                    f"Replace `{name}(x)` with `{msg}`",
-                )
+                ErrorInfo.from_node(node, f"Replace `{name}(x)` with `{msg}`")
             )

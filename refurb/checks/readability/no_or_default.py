@@ -42,6 +42,7 @@ class ErrorInfo(Error):
     ```
     """
 
+    name = "no-default-or"
     code = 143
     categories = ["logical", "readability"]
 
@@ -53,7 +54,6 @@ def check(node: OpExpr, errors: list[Error]) -> None:
                 case CallExpr(
                     callee=NameExpr(name=name, fullname=fullname), args=[]
                 ):
-                    fullname = fullname
                     expr = f"{name}()"
 
                 case ListExpr(items=[]):
@@ -91,9 +91,7 @@ def check(node: OpExpr, errors: list[Error]) -> None:
 
             if fullname and type_name.startswith(fullname):
                 errors.append(
-                    ErrorInfo(
-                        node.line,
-                        node.column,
-                        f"Replace `x or {expr}` with `x`",
+                    ErrorInfo.from_node(
+                        node, f"Replace `x or {expr}` with `x`"
                     )
                 )

@@ -31,6 +31,7 @@ class ErrorInfo(Error):
     ```
     """
 
+    name = "use-min-max"
     code = 136
     categories = ["builtin", "logical", "readability"]
 
@@ -65,9 +66,8 @@ def check(node: ConditionalExpr, errors: list[Error]) -> None:
                 and (func := FUNC_TABLE.get(oper))
             ):
                 errors.append(
-                    ErrorInfo(
-                        node.line,
-                        node.column,
+                    ErrorInfo.from_node(
+                        node,
                         f"Replace `x if x {oper} y else y` with `{func}(x, y)`",  # noqa: E501
                     )
                 )
@@ -78,9 +78,8 @@ def check(node: ConditionalExpr, errors: list[Error]) -> None:
                 and (func := FUNC_TABLE.get(flip_comparison_oper(oper)))
             ):
                 errors.append(
-                    ErrorInfo(
-                        node.line,
-                        node.column,
+                    ErrorInfo.from_node(
+                        node,
                         f"Replace `x if y {oper} x else y` with `{func}(y, x)`",  # noqa: E501
                     )
                 )

@@ -42,6 +42,7 @@ class ErrorInfo(Error):
     ```
     """
 
+    name = "no-set-for-loop"
     code = 142
     categories = ["builtin"]
 
@@ -78,9 +79,8 @@ def check(node: ForStmt, errors: list[Error]) -> None:
                 new_expr = "... for x in y"
 
             errors.append(
-                ErrorInfo(
-                    node.line,
-                    node.column,
+                ErrorInfo.from_node(
+                    node,
                     f"Replace `for x in y: s.{name}({expr})` with `s.{new_func}({new_expr})`",  # noqa: E501
                 )
             )

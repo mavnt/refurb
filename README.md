@@ -76,6 +76,8 @@ num = 123
 ```
 ````
 
+An online list of all available checks can be viewed [here](./docs/checks.md).
+
 ## Ignoring Errors
 
 Use `--ignore 123` to ignore error 123. The error code can be in the form `FURB123` or `123`.
@@ -93,6 +95,13 @@ y = list()  # noqa
 
 Here, `noqa: FURB123` specifically ignores the FURB123 error for that line, and `noqa` ignores
 all errors on that line.
+
+You can also specify multiple errors to ignore by separating them with a comma/space:
+
+```
+x = not not int(0)  # noqa: FURB114, FURB123
+x = not not int(0)  # noqa: FURB114 FURB123
+```
 
 ## Enabling/Disabling Checks
 
@@ -131,6 +140,32 @@ Also, if you disable an entire category you can still explicitly re-enable a che
 Use the `--python-version` flag to tell Refurb which version of Python your codebase is using. This
 should allow for better detection of language features, and allow for better error messages. The argument
 for this flag must be in the form `x.y`, for example, `3.10`.
+
+The syntax for using this in the config file is `python_version = "3.10"`.
+
+## Changing Output Formats
+
+By default everything is outputted as plain text:
+
+```
+file.py:1:5 [FURB123]: Replace `int(x)` with `x`
+```
+
+Here are all of the available formats:
+
+* `text`: The default
+* `github`: Print output for use with [GitHub Annotations](https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions)
+* More to come!
+
+To change the default format use `--format XYZ` on the command line, or `format = "XYZ"` in the config file.
+
+## Changing Sort Order
+
+By default errors are sorted by filename, then by error code. To change this, use the `--sort XYZ` flag on
+the command line, or `sort_by = "XYZ"` in the config file, where `XYZ` is one of the following sort modes:
+
+* `filename`: Sort files in alphabetical order (the default)
+* `error`: Sort by error first, then by filename
 
 ## Overriding Mypy Flags
 
@@ -174,6 +209,33 @@ take precedence. All other arguments (such as `ignore` and `load`) will be combi
 You can use the `--config-file` flag to tell Refurb to use a different config file from the
 default `pyproject.toml` file. Note that it still must be in the same form as the normal
 `pyproject.toml` file.
+
+### Ignore Checks Per File/Folder
+
+If you have a large codebase you might want to ignore errors for certain files or folders,
+which allows you to incrementally fix errors as you see fit. To do that, add the following
+to your `pyproject.toml` file:
+
+```toml
+# these settings will be applied globally
+[tool.refurb]
+enable_all = true
+
+# these will only be applied to the "src" folder
+[[tool.refurb.amend]]
+path = "src"
+ignore = ["FURB123", "FURB120"]
+
+# these will only be applied to the "src/util.py" file
+[[tool.refurb.amend]]
+path = "src/util.py"
+ignore = ["FURB125", "FURB148"]
+```
+
+> Note that only the `ignore` field is available in the `amend` sections. This is because
+> a check can only be enabled/disabled for the entire codebase, and cannot be selectively
+> enabled/disabled on a per-file basis. Assuming a check is enabled though, you can simply
+> `ignore` the errors for the files of your choosing.
 
 ## Using Refurb With `pre-commit`
 

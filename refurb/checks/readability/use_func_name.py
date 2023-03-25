@@ -37,8 +37,8 @@ class ErrorInfo(Error):
     ```
     """
 
+    name = "use-func-name"
     code = 111
-    msg: str = "Replace `lambda x: f(x)` with `f`"
     categories = ["readability"]
 
 
@@ -71,9 +71,8 @@ def check(node: LambdaExpr, errors: list[Error]) -> None:
             _lambda = f"lambda {arg_names}" if arg_names else "lambda"
 
             errors.append(
-                ErrorInfo(
-                    node.line,
-                    node.column,
+                ErrorInfo.from_node(
+                    node,
                     f"Replace `{_lambda}: {func_name}({arg_names})` with `{func_name}`",  # noqa: E501
                 )
             )

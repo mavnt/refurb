@@ -250,3 +250,34 @@ def is_name_unused_in_contexts(name: NameExpr, contexts: list[Node]) -> bool:
             return False
 
     return True
+
+
+def normalize_os_path(module: str | None) -> str:
+    """
+    Mypy turns "os.path" module names into their respective platform, such
+    as "ntpath" for windows, "posixpath" if they are POSIX only, or
+    "genericpath" if they apply to both (I assume). To make life easier
+    for us though, we turn those module names into their original form.
+    """
+
+    # Used for compatibility with older versions of Mypy.
+    if not module:
+        return ""
+
+    segments = module.split(".")
+
+    if segments[0].startswith(("genericpath", "ntpath", "posixpath")):
+        return ".".join(["os", "path"] + segments[1:])
+
+    return module
+
+
+def is_type_none_call(node: Expression) -> bool:
+    match node:
+        case CallExpr(
+            callee=NameExpr(fullname="builtins.type"),
+            args=[NameExpr(fullname="builtins.None")],
+        ):
+            return True
+
+    return False

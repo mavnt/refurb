@@ -37,8 +37,9 @@ class ErrorInfo(Error):
     ```
     """
 
+    name = "use-isinstance-issubclass-tuple"
     code = 121
-    categories = ["readability"]
+    categories = ["python310", "readability"]
 
 
 def check(node: OpExpr, errors: list[Error], settings: Settings) -> None:
@@ -52,15 +53,13 @@ def check(node: OpExpr, errors: list[Error], settings: Settings) -> None:
             and len(lhs_args) == 2
             and is_equivalent(lhs_args[0], rhs_args[0])
         ):
-            if settings.python_version and settings.python_version >= (3, 10):
-                type_args = "y | z"
-            else:
-                type_args = "(y, z)"
+            type_args = (
+                "y | z" if settings.python_version >= (3, 10) else "(y, z)"
+            )
 
             errors.append(
-                ErrorInfo(
-                    lhs_args[1].line,
-                    lhs_args[1].column,
-                    msg=f"Replace `{lhs.name}(x, y) or {lhs.name}(x, z)` with `{lhs.name}(x, {type_args})`",  # noqa: E501
+                ErrorInfo.from_node(
+                    lhs_args[1],
+                    f"Replace `{lhs.name}(x, y) or {lhs.name}(x, z)` with `{lhs.name}(x, {type_args})`",  # noqa: E501
                 )
             )

@@ -1,5 +1,5 @@
+from collections.abc import Generator
 from dataclasses import dataclass
-from typing import Generator
 
 from mypy.nodes import (
     Block,
@@ -54,6 +54,7 @@ class ErrorInfo(Error):
     ```
     """
 
+    name = "no-redundant-return"
     code = 125
     msg: str = "Return is redundant here"
     categories = ["control-flow", "readability"]
@@ -91,4 +92,4 @@ def check(node: FuncItem, errors: list[Error]) -> None:
                 return
 
             for return_node in get_trailing_return(stmt):
-                errors.append(ErrorInfo(return_node.line, return_node.column))
+                errors.append(ErrorInfo.from_node(return_node))

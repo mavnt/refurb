@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import re
 import sys
-from dataclasses import dataclass, field
+from collections.abc import Callable, Iterator
+from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Iterator
+from typing import Any, Literal, TypeVar
 
 if sys.version_info >= (3, 11):
     import tomllib  # pragma: no cover
@@ -12,6 +13,10 @@ else:
     import tomli as tomllib  # pragma: no cover
 
 from .error import ErrorCategory, ErrorClassifier, ErrorCode
+
+
+def get_python_version() -> tuple[int, int]:
+    return sys.version_info[:2]
 
 
 @dataclass
@@ -30,8 +35,10 @@ class Settings:
     enable_all: bool = False
     disable_all: bool = False
     config_file: str | None = None
-    python_version: tuple[int, int] | None = None
+    python_version: tuple[int, int] = get_python_version()
     mypy_args: list[str] = field(default_factory=list)
+    format: Literal["text", "github"] = "text"
+    sort_by: Literal["filename", "error"] = "filename"
 
     def __post_init__(self) -> None:
         if self.enable_all and self.disable_all:
@@ -68,8 +75,10 @@ class Settings:
             enable_all=old.enable_all or new.enable_all,
             quiet=old.quiet or new.quiet,
             config_file=old.config_file or new.config_file,
-            python_version=old.python_version or new.python_version,
+            python_version=new.python_version,
             mypy_args=new.mypy_args or old.mypy_args,
+            format=new.format,
+            sort_by=new.sort_by,
         )
 
 
@@ -102,43 +111,128 @@ def parse_python_version(version: str) -> tuple[int, int]:
     raise ValueError("refurb: version must be in form `x.y`")
 
 
+def validate_format(format: str) -> Literal["github", "text"]:
+    if format in ("github", "text"):
+        return format  # type: ignore
+
+    raise ValueError(f'refurb: "{format}" is not a valid format')
+
+
+def validate_sort_by(sort_by: str) -> Literal["filename", "error"]:
+    if sort_by in ("filename", "error"):
+        return sort_by  # type: ignore
+
+    raise ValueError(f'refurb: cannot sort by "{sort_by}"')
+
+
+def parse_amend_error(err: str, path: Path) -> ErrorClassifier:
+    classifier = parse_error_classifier(err)
+
+    return replace(classifier, path=path)
+
+
+def parse_amendment(  # type: ignore
+    amendment: dict[str, Any]
+) -> set[ErrorClassifier]:
+    match amendment:
+        case {"path": str(path), "ignore": list(ignored), **extra}:
+            if extra:
+                raise ValueError(
+                    'refurb: only "path" and "ignore" fields are supported'
+                )
+
+            return {
+                parse_amend_error(str(error), Path(path)) for error in ignored
+            }
+
+    raise ValueError(
+        'refurb: "path" or "ignore" fields are missing or malformed'
+    )
+
+
+T = TypeVar("T")
+
+
+def pop_type(  # type: ignore[misc]
+    ty: type[T], type_name: str = ""
+) -> Callable[..., T]:
+    def inner(  # type: ignore[misc]
+        config: dict[str, Any], name: str, *, default: T | None = None
+    ) -> T:
+        x = config.pop(name, default or ty())
+
+        if isinstance(x, ty):
+            return x
+
+        raise ValueError(
+            f'refurb: "{name}" must be a {type_name or ty.__name__}'
+        )
+
+    return inner
+
+
+pop_list = pop_type(list)
+pop_bool = pop_type(bool)
+pop_str = pop_type(str, "string")
+
+
 def parse_config_file(contents: str) -> Settings:
-    config = tomllib.loads(contents)
+    tool = tomllib.loads(contents).get("tool")
 
-    if tool := config.get("tool"):
-        if config := tool.get("refurb"):
-            ignore = {
-                parse_error_classifier(str(x))
-                for x in config.get("ignore", [])
-            }
+    if not tool:
+        return Settings()
 
-            enable = {
-                parse_error_classifier(str(x))
-                for x in config.get("enable", [])
-            }
+    config = tool.get("refurb")
 
-            disable = {
-                parse_error_classifier(str(x))
-                for x in config.get("disable", [])
-            }
+    if not config:
+        return Settings()
 
-            version = config.get("python_version")
-            python_version = parse_python_version(version) if version else None
-            mypy_args = [str(x) for x in config.get("mypy_args", [])]
+    settings = Settings()
 
-            return Settings(
-                ignore=ignore,
-                enable=enable - disable,
-                disable=disable,
-                load=config.get("load", []),
-                quiet=config.get("quiet", False),
-                disable_all=config.get("disable_all", False),
-                enable_all=config.get("enable_all", False),
-                python_version=python_version,
-                mypy_args=mypy_args,
-            )
+    settings.load = pop_list(config, "load")
+    settings.quiet = pop_bool(config, "quiet")
+    settings.disable_all = pop_bool(config, "disable_all")
+    settings.enable_all = pop_bool(config, "enable_all")
 
-    return Settings()
+    enable = pop_list(config, "enable")
+    disable = pop_list(config, "disable")
+    settings.enable = {parse_error_classifier(str(x)) for x in enable}
+    settings.disable = {parse_error_classifier(str(x)) for x in disable}
+    settings.enable -= settings.disable
+
+    ignore = pop_list(config, "ignore")
+    settings.ignore = {parse_error_classifier(str(x)) for x in ignore}
+
+    mypy_args = pop_list(config, "mypy_args")
+    settings.mypy_args = [str(x) for x in mypy_args]
+
+    version = pop_str(config, "python_version")
+    settings.python_version = (
+        parse_python_version(version) if version else get_python_version()
+    )
+
+    settings.format = validate_format(
+        pop_str(config, "format", default="text")
+    )
+
+    settings.sort_by = validate_sort_by(
+        pop_str(config, "sort_by", default="filename")
+    )
+
+    amendments: list[dict[str, Any]] = config.pop("amend", [])  # type: ignore
+
+    if not isinstance(amendments, list):
+        raise ValueError('refurb: "amend" field(s) must be a TOML table')
+
+    for amendment in amendments:
+        settings.ignore.update(parse_amendment(amendment))
+
+    if config:
+        raise ValueError(
+            f"refurb: unknown field(s): {', '.join(config.keys())}"
+        )
+
+    return settings
 
 
 def parse_command_line_args(args: list[str]) -> Settings:
@@ -212,6 +306,12 @@ def parse_command_line_args(args: list[str]) -> Settings:
             version = get_next_arg(arg, iargs)
 
             settings.python_version = parse_python_version(version)
+
+        elif arg == "--format":
+            settings.format = validate_format(get_next_arg(arg, iargs))
+
+        elif arg == "--sort":
+            settings.sort_by = validate_sort_by(get_next_arg(arg, iargs))
 
         elif arg == "--":
             settings.mypy_args = list(iargs)

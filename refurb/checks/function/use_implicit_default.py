@@ -1,5 +1,5 @@
+from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import Iterator
 
 from mypy.nodes import (
     ArgKind,
@@ -51,6 +51,7 @@ class ErrorInfo(Error):
     ```
     """
 
+    name = "use-implicit-default"
     enabled = False
     code = 120
     msg: str = "Don't pass an argument if it is the same as the default value"
@@ -151,7 +152,7 @@ def check_func(caller: CallExpr, func: FuncDef, errors: list[Error]) -> None:
             return  # pragma: no cover
 
         if default and is_equivalent(value, default):
-            errors.append(ErrorInfo(value.line, value.column))
+            errors.append(ErrorInfo.from_node(value))
 
 
 def check_symbol(

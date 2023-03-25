@@ -1,5 +1,5 @@
+from collections.abc import Generator
 from dataclasses import dataclass
-from typing import Generator
 
 from mypy.nodes import (
     Block,
@@ -59,6 +59,7 @@ class ErrorInfo(Error):
     ```
     """
 
+    name = "no-redundant-continue"
     code = 133
     msg: str = "Continue is redundant here"
     categories = ["control-flow", "readability"]
@@ -99,6 +100,4 @@ def check(node: ForStmt | WhileStmt, errors: list[Error]) -> None:
                 return
 
             for continue_node in get_trailing_continue(stmt):
-                errors.append(
-                    ErrorInfo(continue_node.line, continue_node.column)
-                )
+                errors.append(ErrorInfo.from_node(continue_node))

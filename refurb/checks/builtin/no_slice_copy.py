@@ -27,6 +27,7 @@ class ErrorInfo(Error):
     ```
     """
 
+    name = "no-slice-copy"
     code = 145
     msg: str = "Replace `x[:]` with `x.copy()`"
     categories = ["readability"]
@@ -54,7 +55,7 @@ class SliceExprVisitor(TraverserVisitor):
             isinstance(index, SliceExpr)
             and index.begin_index is index.end_index is index.stride is None
         ):
-            self.errors.append(ErrorInfo(node.line, node.column))
+            self.errors.append(ErrorInfo.from_node(node))
 
 
 def check(node: MypyFile, errors: list[Error]) -> None:

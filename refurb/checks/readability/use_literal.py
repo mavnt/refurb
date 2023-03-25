@@ -26,6 +26,7 @@ class ErrorInfo(Error):
     ```
     """
 
+    name = "use-literal"
     code = 112
     categories = ["pythonic", "readability"]
 
@@ -48,11 +49,9 @@ def check(node: CallExpr, errors: list[Error]) -> None:
         case CallExpr(
             callee=NameExpr(fullname=fullname, name=name),
             args=[],
-        ) if literal := FUNC_NAMES.get(fullname or ""):
+        ) if literal := FUNC_NAMES.get(fullname):
             errors.append(
-                ErrorInfo(
-                    node.line,
-                    node.column,
-                    f"Replace `{name}()` with `{literal}`",
+                ErrorInfo.from_node(
+                    node, f"Replace `{name}()` with `{literal}`"
                 )
             )

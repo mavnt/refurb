@@ -33,6 +33,7 @@ class ErrorInfo(Error):
     ```
     """
 
+    name = "use-pathlib-write-text-write-bytes"
     code = 103
     categories = ["pathlib"]
 
@@ -61,9 +62,8 @@ def check(node: WithStmt, errors: list[Error]) -> None:
             func = "write_bytes" if ("b" in mode) else "write_text"
 
             errors.append(
-                ErrorInfo(
-                    node.line,
-                    node.column,
+                ErrorInfo.from_node(
+                    node,
                     f"Replace `with open(x, ...) as f: f.write(y)` with `Path(x).{func}(y)`",  # noqa: E501
                 )
             )

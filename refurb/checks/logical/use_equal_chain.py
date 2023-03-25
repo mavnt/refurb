@@ -39,6 +39,7 @@ class ErrorInfo(Error):
     Note: if `x` depends on side-effects, then this check should be ignored.
     """
 
+    name = "use-comparison-chain"
     code = 124
     categories = ["logical", "readability"]
 
@@ -58,9 +59,5 @@ def check(node: OpExpr, errors: list[Error]) -> None:
             expr, indices = data
 
             errors.append(
-                ErrorInfo(
-                    expr.line,
-                    expr.column,
-                    create_message(indices, cmp_oper),
-                )
+                ErrorInfo.from_node(expr, create_message(indices, cmp_oper))
             )

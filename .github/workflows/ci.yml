@@ -36,8 +36,8 @@ jobs:
       - name: Pip install
         run: make install
 
-      - name: Run flake8
-        run: make flake8
+      - name: Run ruff
+        run: make ruff
 
       - name: Run mypy
         run: make mypy
@@ -53,3 +53,7 @@ jobs:
 
       - name: Run e2e tests
         run: make test-e2e
+
+        # TODO: fail if docs are out of date
+      - name: Build docs
+        run: make docs

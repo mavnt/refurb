@@ -43,6 +43,7 @@ class ErrorInfo(Error):
     ```
     """
 
+    name = "use-starmap"
     code = 140
     msg: str = "Replace `f(...) for ... in x` with `starmap(f, x)`"
     categories = ["itertools", "performance"]
@@ -66,4 +67,4 @@ def check(node: GeneratorExpr, errors: list[Error]) -> None:
                 ):
                     return
 
-            errors.append(ErrorInfo(node.line, node.column))
+            errors.append(ErrorInfo.from_node(node))

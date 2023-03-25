@@ -1,7 +1,8 @@
 from dataclasses import dataclass
 
-from mypy.nodes import BytesExpr, CallExpr, MemberExpr, NameExpr, StrExpr, Var
+from mypy.nodes import BytesExpr, CallExpr, NameExpr, RefExpr, StrExpr, Var
 
+from refurb.checks.common import normalize_os_path
 from refurb.checks.pathlib.util import is_pathlike
 from refurb.error import Error
 
@@ -27,24 +28,28 @@ class ErrorInfo(Error):
     ```
     """
 
+    name = "use-pathlib-is-funcs"
     code = 146
     categories = ["pathlib"]
 
 
 PATH_TO_PATHLIB_NAMES = {
-    "posixpath.isabs": "is_absolute",
-    "genericpath.isdir": "is_dir",
-    "genericpath.isfile": "is_file",
-    "posixpath.islink": "is_symlink",
+    "os.path.isabs": "is_absolute",
+    "os.path.isdir": "is_dir",
+    "os.path.isfile": "is_file",
+    "os.path.islink": "is_symlink",
 }
 
 
 def check(node: CallExpr, errors: list[Error]) -> None:
     match node:
-        case CallExpr(
-            callee=MemberExpr(fullname=fullname, name=name),
-            args=[arg],
-        ) if new_name := PATH_TO_PATHLIB_NAMES.get(fullname or ""):
+        case CallExpr(callee=RefExpr(fullname=fullname), args=[arg]):
+            normalized_name = normalize_os_path(fullname)
+            new_name = PATH_TO_PATHLIB_NAMES.get(normalized_name)
+
+            if not new_name:
+                return
+
             if is_pathlike(arg):
                 replace = f"x.{new_name}()"
 
@@ -64,9 +69,7 @@ def check(node: CallExpr, errors: list[Error]) -> None:
                 replace = f"Path(x).{new_name}()"
 
             errors.append(
-                ErrorInfo(
-                    node.line,
-                    node.column,
-                    f"Replace `os.path.{name}(x)` with `{replace}`",
+                ErrorInfo.from_node(
+                    node, f"Replace `{normalized_name}(x)` with `{replace}`"
                 )
             )

@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from refurb.error import ErrorCategory, ErrorCode
@@ -52,14 +54,14 @@ def test_parse_version_args() -> None:
 
 def test_parse_ignore() -> None:
     got = parse_args(["--ignore", "FURB123", "--ignore", "321"])
-    expected = Settings(ignore=set((ErrorCode(123), ErrorCode(321))))
+    expected = Settings(ignore={ErrorCode(123), ErrorCode(321)})
 
     assert got == expected
 
 
 def test_parse_ignore_category() -> None:
     got = parse_args(["--ignore", "#category"])
-    expected = Settings(ignore=set((ErrorCategory("category"),)))
+    expected = Settings(ignore={ErrorCategory("category")})
 
     assert got == expected
 
@@ -73,14 +75,14 @@ def test_parse_ignore_check_missing_arg() -> None:
 
 def test_parse_enable() -> None:
     got = parse_args(["--enable", "FURB123", "--enable", "321"])
-    expected = Settings(enable=set((ErrorCode(123), ErrorCode(321))))
+    expected = Settings(enable={ErrorCode(123), ErrorCode(321)})
 
     assert got == expected
 
 
 def test_parse_enable_category() -> None:
     got = parse_args(["--enable", "#category"])
-    expected = Settings(enable=set((ErrorCategory("category"),)))
+    expected = Settings(enable={ErrorCategory("category")})
 
     assert got == expected
 
@@ -140,14 +142,18 @@ def test_parse_config_file() -> None:
 load = ["some", "folders"]
 ignore = [100, "FURB101"]
 enable = ["FURB111", "FURB222"]
+format = "github"
+sort_by = "error"
 """
 
     config = parse_config_file(contents)
 
     assert config == Settings(
         load=["some", "folders"],
-        ignore=set((ErrorCode(100), ErrorCode(101))),
-        enable=set((ErrorCode(111), ErrorCode(222))),
+        ignore={ErrorCode(100), ErrorCode(101)},
+        enable={ErrorCode(111), ErrorCode(222)},
+        format="github",
+        sort_by="error",
     )
 
 
@@ -166,7 +172,7 @@ ignore = [100, "FURB101"]
     assert merged == Settings(
         files=["some_file.py"],
         load=["some", "folders"],
-        ignore=set((ErrorCode(100), ErrorCode(101))),
+        ignore={ErrorCode(100), ErrorCode(101)},
     )
 
 
@@ -188,8 +194,8 @@ quiet = true
 
     assert merged == Settings(
         load=["some", "folders", "x"],
-        ignore=set((ErrorCode(100), ErrorCode(101), ErrorCode(123))),
-        enable=set((ErrorCode(111), ErrorCode(222), ErrorCode(200))),
+        ignore={ErrorCode(100), ErrorCode(101), ErrorCode(123)},
+        enable={ErrorCode(111), ErrorCode(222), ErrorCode(200)},
         quiet=True,
     )
 
@@ -209,9 +215,7 @@ def test_config_missing_load_option_is_allowed() -> None:
 ignore = [123]
 """
 
-    assert parse_config_file(contents) == Settings(
-        ignore=set((ErrorCode(123),))
-    )
+    assert parse_config_file(contents) == Settings(ignore={ErrorCode(123)})
 
 
 def test_parse_error_codes() -> None:
@@ -229,7 +233,9 @@ def test_parse_error_codes() -> None:
 
     for input, output in tests.items():
         if output == ValueError:
-            with pytest.raises(ValueError):
+            msg = "must be in form FURB123 or 123"
+
+            with pytest.raises(ValueError, match=msg):
                 parse_error_id(input)
 
         else:
@@ -239,25 +245,25 @@ def test_parse_error_codes() -> None:
 def test_disable_error() -> None:
     settings = parse_args(["--disable", "FURB100"])
 
-    assert settings == Settings(disable=set((ErrorCode(100),)))
+    assert settings == Settings(disable={ErrorCode(100)})
 
 
 def test_disable_error_category() -> None:
     settings = parse_args(["--disable", "#category"])
 
-    assert settings == Settings(disable=set((ErrorCategory("category"),)))
+    assert settings == Settings(disable={ErrorCategory("category")})
 
 
 def test_disable_existing_enabled_error() -> None:
     settings = parse_args(["--enable", "FURB100", "--disable", "FURB100"])
 
-    assert settings == Settings(disable=set((ErrorCode(100),)))
+    assert settings == Settings(disable={ErrorCode(100)})
 
 
 def test_enable_existing_disabled_error() -> None:
     settings = parse_args(["--disable", "FURB100", "--enable", "FURB100"])
 
-    assert settings == Settings(enable=set((ErrorCode(100),)))
+    assert settings == Settings(enable={ErrorCode(100)})
 
 
 def test_parse_disable_check_missing_arg() -> None:
@@ -275,9 +281,7 @@ disable = ["FURB111", "FURB222"]
 
     config_file = parse_config_file(contents)
 
-    assert config_file == Settings(
-        disable=set((ErrorCode(111), ErrorCode(222)))
-    )
+    assert config_file == Settings(disable={ErrorCode(111), ErrorCode(222)})
 
 
 def test_disable_overrides_enable_in_config_file() -> None:
@@ -290,8 +294,8 @@ disable = ["FURB111", "FURB333", "FURB444"]
     config_file = parse_config_file(contents)
 
     assert config_file == Settings(
-        enable=set((ErrorCode(222),)),
-        disable=set((ErrorCode(111), ErrorCode(333), ErrorCode(444))),
+        enable={ErrorCode(222)},
+        disable={ErrorCode(111), ErrorCode(333), ErrorCode(444)},
     )
 
 
@@ -309,8 +313,8 @@ disable = ["FURB111", "FURB444"]
     merged = Settings.merge(config_file, command_line_args)
 
     assert merged == Settings(
-        enable=set((ErrorCode(222),)),
-        disable=set((ErrorCode(111), ErrorCode(333), ErrorCode(444))),
+        enable={ErrorCode(222)},
+        disable={ErrorCode(111), ErrorCode(333), ErrorCode(444)},
     )
 
 
@@ -325,9 +329,7 @@ def test_disable_all_flag_disables_existing_enables() -> None:
         ["--enable", "FURB123", "--disable-all", "--enable", "FURB456"]
     )
 
-    assert settings == Settings(
-        disable_all=True, enable=set((ErrorCode(456),))
-    )
+    assert settings == Settings(disable_all=True, enable={ErrorCode(456)})
 
 
 def test_disable_all_in_config_file() -> None:
@@ -341,7 +343,7 @@ enable = ["FURB123"]
 
     assert config_file == Settings(
         disable_all=True,
-        enable=set((ErrorCode(123),)),
+        enable={ErrorCode(123)},
     )
 
 
@@ -360,7 +362,7 @@ enable = ["FURB123"]
 
     assert merged == Settings(
         disable_all=True,
-        enable=set((ErrorCode(456),)),
+        enable={ErrorCode(456)},
     )
 
 
@@ -374,7 +376,7 @@ def test_parse_invalid_python_version_flag_will_fail() -> None:
     versions = ["3.10.8", "x.y", "-3.-8"]
 
     for version in versions:
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="version must be in form `x.y`"):
             parse_args(["--python-version", version])
 
 
@@ -427,7 +429,7 @@ disable = ["FURB100", "FURB103"]
     merged_settings = Settings.merge(config_file, command_line_args)
 
     assert merged_settings == Settings(
-        enable_all=True, disable=set((ErrorCode(105),))
+        enable_all=True, disable={ErrorCode(105)}
     )
 
 
@@ -442,9 +444,9 @@ ignore = ["#category-c"]
     config_file = parse_config_file(config)
 
     assert config_file == Settings(
-        enable=set((ErrorCategory("category-a"),)),
-        disable=set((ErrorCategory("category-b"),)),
-        ignore=set((ErrorCategory("category-c"),)),
+        enable={ErrorCategory("category-a")},
+        disable={ErrorCategory("category-b")},
+        ignore={ErrorCategory("category-c")},
     )
 
 
@@ -492,7 +494,148 @@ def test_flags_which_support_comma_separated_cli_args() -> None:
     )
 
     assert settings == Settings(
-        enable=set((ErrorCode(100), ErrorCode(101))),
-        disable=set((ErrorCode(102), ErrorCode(103))),
-        ignore=set((ErrorCode(104), ErrorCode(105))),
+        enable={ErrorCode(100), ErrorCode(101)},
+        disable={ErrorCode(102), ErrorCode(103)},
+        ignore={ErrorCode(104), ErrorCode(105)},
     )
+
+
+def test_parse_amend_file_paths() -> None:
+    config = """\
+[tool.refurb]
+ignore = ["FURB100"]
+
+[[tool.refurb.amend]]
+path = "some/file/path"
+ignore = ["FURB101", "FURB102"]
+
+[[tool.refurb.amend]]
+path = "some/other/path"
+ignore = [102, 103]
+"""
+
+    config_file = parse_config_file(config)
+
+    assert config_file == Settings(
+        ignore={
+            ErrorCode(100),
+            ErrorCode(101, path=Path("some/file/path")),
+            ErrorCode(102, path=Path("some/file/path")),
+            ErrorCode(102, path=Path("some/other/path")),
+            ErrorCode(103, path=Path("some/other/path")),
+        }
+    )
+
+
+def test_invalid_amend_field_fails() -> None:
+    config = """\
+[tool.refurb]
+amend = "oops"
+"""
+
+    msg = r'"amend" field\(s\) must be a TOML table'
+
+    with pytest.raises(ValueError, match=msg):
+        parse_config_file(config)
+
+
+def test_extra_fields_in_amend_table_fails() -> None:
+    config = """\
+[[tool.refurb.amend]]
+path = "some/folder"
+ignore = ["FURB123"]
+extra = "data"
+"""
+
+    msg = 'only "path" and "ignore" fields are supported'
+
+    with pytest.raises(ValueError, match=msg):
+        parse_config_file(config)
+
+
+def test_missing_or_malformed_fields_in_amend_table_fails() -> None:
+    msg = '"path" or "ignore" fields are missing or malformed'
+
+    config = """\
+[[tool.refurb.amend]]
+ignore = ["FURB123"]
+"""
+
+    with pytest.raises(ValueError, match=msg):
+        parse_config_file(config)
+
+    config = """\
+[[tool.refurb.amend]]
+path = "some/folder"
+"""
+
+    with pytest.raises(ValueError, match=msg):
+        parse_config_file(config)
+
+    config = """\
+[[tool.refurb.amend]]
+path = true
+ignore = false
+"""
+
+    with pytest.raises(ValueError, match=msg):
+        parse_config_file(config)
+
+
+def test_extra_fields_config_file_fails() -> None:
+    config = """\
+[tool.refurb]
+unknown = ""
+fields = ""
+"""
+
+    msg = r"refurb: unknown field\(s\): unknown, fields"
+
+    with pytest.raises(ValueError, match=msg):
+        parse_config_file(config)
+
+
+def test_incorrectly_typed_args_raises_error() -> None:
+    tests = {
+        "ignore = false": "must be a list",
+        "enable = false": "must be a list",
+        "disable = false": "must be a list",
+        "load = false": "must be a list",
+        "mypy_args = false": "must be a list",
+        "quiet = []": "must be a bool",
+        "disable_all = []": "must be a bool",
+        "enable_all = []": "must be a bool",
+        "python_version = false": "must be a string",
+    }
+
+    for test, expected in tests.items():
+        config = f"[tool.refurb]\n{test}"
+
+        with pytest.raises(ValueError, match=expected):
+            parse_config_file(config)
+
+
+def test_parse_empty_config_file() -> None:
+    assert parse_config_file("") == Settings()
+
+
+def test_parse_format_flag() -> None:
+    assert parse_args(["--format", "github"]) == Settings(format="github")
+
+
+def test_check_format_must_be_valid() -> None:
+    msg = 'refurb: "oops" is not a valid format'
+
+    with pytest.raises(ValueError, match=msg):
+        parse_args(["--format", "oops"])
+
+
+def test_parse_sort_by_flag() -> None:
+    assert parse_args(["--sort", "error"]) == Settings(sort_by="error")
+
+
+def test_check_sort_by_field_must_be_valid() -> None:
+    msg = 'refurb: cannot sort by "oops"'
+
+    with pytest.raises(ValueError, match=msg):
+        parse_args(["--sort", "oops"])

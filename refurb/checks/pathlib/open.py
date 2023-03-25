@@ -31,6 +31,7 @@ class ErrorInfo(Error):
     ```
     """
 
+    name = "use-pathlib-open"
     code = 117
     categories = ["pathlib"]
 
@@ -58,9 +59,8 @@ def check(node: CallExpr, errors: list[Error]) -> None:
             expr = "x" if arg == node.args[0] else "str(x)"
 
             errors.append(
-                ErrorInfo(
-                    open_node.line,
-                    open_node.column,
+                ErrorInfo.from_node(
+                    open_node,
                     f"Replace `open({expr}{args})` with `x.open({mode})`",
                 )
             )

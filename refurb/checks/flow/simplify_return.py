@@ -56,6 +56,7 @@ class ErrorInfo(Error):
     ```
     """
 
+    name = "simplify-return"
     code = 126
     categories = ["control-flow", "readability"]
 
@@ -86,9 +87,8 @@ def check(node: FuncItem, errors: list[Error]) -> None:
                 name = "case _" if type(stmt) is MatchStmt else "else"
 
                 errors.append(
-                    ErrorInfo(
-                        return_node.line,
-                        return_node.column,
+                    ErrorInfo.from_node(
+                        return_node,
                         f"Replace `{name}: return x` with `return x`",
                     )
                 )

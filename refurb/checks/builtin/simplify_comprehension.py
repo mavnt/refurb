@@ -40,6 +40,7 @@ class ErrorInfo(Error):
     ```
     """
 
+    name = "simplify-comprehension"
     enabled = False
     code = 137
     categories = ["builtin", "iterable", "readability"]
@@ -89,9 +90,7 @@ def check(node: CallExpr, errors: list[Error]) -> None:
             new = format_func_name(fullname)
 
             errors.append(
-                ErrorInfo(
-                    node.line,
-                    node.column,
-                    f"Replace `{name}({old})` with `{new}`",
+                ErrorInfo.from_node(
+                    node, f"Replace `{name}({old})` with `{new}`"
                 )
             )

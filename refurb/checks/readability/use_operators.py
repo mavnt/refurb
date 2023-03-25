@@ -43,6 +43,7 @@ class ErrorInfo(Error):
     ```
     """
 
+    name = "use-operator"
     code = 118
     categories = ["operator"]
 
@@ -108,9 +109,8 @@ def check(node: FuncItem, errors: list[Error]) -> None:
         ) if lhs_name == expr_lhs and rhs_name == expr_rhs:
             if func_name := BINARY_OPERATORS.get(op):
                 errors.append(
-                    ErrorInfo(
-                        node.line,
-                        node.column,
+                    ErrorInfo.from_node(
+                        node,
                         f"Replace {func_type} with `operator.{func_name}`",
                     )
                 )
@@ -131,9 +131,8 @@ def check(node: FuncItem, errors: list[Error]) -> None:
         ) if name == expr_name:
             if func_name := UNARY_OPERATORS.get(op):
                 errors.append(
-                    ErrorInfo(
-                        node.line,
-                        node.column,
+                    ErrorInfo.from_node(
+                        node,
                         f"Replace {func_type} with `operator.{func_name}`",
                     )
                 )

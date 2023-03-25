@@ -30,6 +30,7 @@ class ErrorInfo(Error):
     ```
     """
 
+    name = "no-bool-literal-compare"
     code = 149
     categories = ["logical", "readability", "truthy"]
 
@@ -74,9 +75,5 @@ def check(node: ComparisonExpr, errors: list[Error]) -> None:
                 return
 
             errors.append(
-                ErrorInfo(
-                    node.line,
-                    node.column,
-                    f"Replace `{old}` with `{new}`",
-                )
+                ErrorInfo.from_node(node, f"Replace `{old}` with `{new}`")
             )

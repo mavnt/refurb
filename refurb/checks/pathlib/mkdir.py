@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import cast
 
-from mypy.nodes import CallExpr, MemberExpr
+from mypy.nodes import CallExpr, RefExpr
 
 from refurb.error import Error
 
@@ -33,6 +33,7 @@ class ErrorInfo(Error):
     ```
     """
 
+    name = "use-pathlib-mkdir"
     code = 150
     categories = ["pathlib"]
 
@@ -41,7 +42,7 @@ def create_error(node: CallExpr) -> list[Error]:
     old_args = ["x"]
     new_args = []
 
-    fullname = cast(MemberExpr, node.callee).fullname
+    fullname = cast(RefExpr, node.callee).fullname
     is_makedirs = fullname == "os.makedirs"
 
     allowed_names = [None, "mode"]
@@ -68,10 +69,8 @@ def create_error(node: CallExpr) -> list[Error]:
     )
 
     return [
-        ErrorInfo(
-            node.line,
-            node.column,
-            f"Replace `{fullname}({', '.join(old_args)})` with `{expr}`",
+        ErrorInfo.from_node(
+            node, f"Replace `{fullname}({', '.join(old_args)})` with `{expr}`"
         )
     ]
 
@@ -79,11 +78,6 @@ def create_error(node: CallExpr) -> list[Error]:
 def check(node: CallExpr, errors: list[Error]) -> None:
     match node:
         case CallExpr(
-            callee=MemberExpr(fullname="os.mkdir"), args=args
-        ) if args:
-            errors.extend(create_error(node))
-
-        case CallExpr(
-            callee=MemberExpr(fullname="os.makedirs"), args=args
+            callee=RefExpr(fullname="os.mkdir" | "os.makedirs"), args=args
         ) if args:
             errors.extend(create_error(node))
