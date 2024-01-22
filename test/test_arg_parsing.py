@@ -1,4 +1,6 @@
+import os
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -20,15 +22,11 @@ def test_parse_explain_missing_option() -> None:
 
 
 def test_parse_explain_furb_prefix() -> None:
-    assert parse_args(["--explain", "FURB123"]) == Settings(
-        explain=ErrorCode(123)
-    )
+    assert parse_args(["--explain", "FURB123"]) == Settings(explain=ErrorCode(123))
 
 
 def test_require_numbers_as_explain_id() -> None:
-    with pytest.raises(
-        ValueError, match='refurb: "abc" must be in form FURB123 or 123'
-    ):
+    with pytest.raises(ValueError, match='refurb: "abc" must be in form FURB123 or 123'):
         parse_args(["--explain", "abc"])
 
 
@@ -49,7 +47,6 @@ def test_parse_help_args() -> None:
 
 def test_parse_version_args() -> None:
     assert parse_args(["--version"]) == Settings(version=True)
-    assert parse_args(["-v"]) == Settings(version=True)
 
 
 def test_parse_ignore() -> None:
@@ -67,9 +64,7 @@ def test_parse_ignore_category() -> None:
 
 
 def test_parse_ignore_check_missing_arg() -> None:
-    with pytest.raises(
-        ValueError, match='refurb: missing argument after "--ignore"'
-    ):
+    with pytest.raises(ValueError, match='refurb: missing argument after "--ignore"'):
         parse_args(["--ignore"])
 
 
@@ -88,22 +83,16 @@ def test_parse_enable_category() -> None:
 
 
 def test_parse_enable_check_missing_arg() -> None:
-    with pytest.raises(
-        ValueError, match='refurb: missing argument after "--enable"'
-    ):
+    with pytest.raises(ValueError, match='refurb: missing argument after "--enable"'):
         parse_args(["--enable"])
 
 
 def test_debug_parsing() -> None:
-    assert parse_args(["--debug", "file"]) == Settings(
-        files=["file"], debug=True
-    )
+    assert parse_args(["--debug", "file"]) == Settings(files=["file"], debug=True)
 
 
 def test_quiet_flag_parsing() -> None:
-    assert parse_args(["--quiet", "file"]) == Settings(
-        files=["file"], quiet=True
-    )
+    assert parse_args(["--quiet", "file"]) == Settings(files=["file"], quiet=True)
 
 
 def test_generate_subcommand() -> None:
@@ -111,22 +100,16 @@ def test_generate_subcommand() -> None:
 
 
 def test_load_flag() -> None:
-    assert parse_args(["--load", "some_module"]) == Settings(
-        load=["some_module"]
-    )
+    assert parse_args(["--load", "some_module"]) == Settings(load=["some_module"])
 
 
 def test_parse_load_flag_missing_arg() -> None:
-    with pytest.raises(
-        ValueError, match='refurb: missing argument after "--load"'
-    ):
+    with pytest.raises(ValueError, match='refurb: missing argument after "--load"'):
         parse_args(["--load"])
 
 
 def test_parse_config_file_flag_missing_arg() -> None:
-    with pytest.raises(
-        ValueError, match='refurb: missing argument after "--config-file"'
-    ):
+    with pytest.raises(ValueError, match='refurb: missing argument after "--config-file"'):
         parse_args(["--config-file"])
 
 
@@ -144,6 +127,7 @@ ignore = [100, "FURB101"]
 enable = ["FURB111", "FURB222"]
 format = "github"
 sort_by = "error"
+color = false
 """
 
     config = parse_config_file(contents)
@@ -154,6 +138,7 @@ sort_by = "error"
         enable={ErrorCode(111), ErrorCode(222)},
         format="github",
         sort_by="error",
+        color=False,
     )
 
 
@@ -183,11 +168,13 @@ load = ["some", "folders"]
 ignore = [100, "FURB101"]
 enable = ["FURB111", "FURB222"]
 quiet = true
+format = "github"
+sort_by = "error"
+python_version = "3.7"
+mypy_args = ["some", "args"]
 """
 
-    command_line_args = parse_args(
-        ["--load", "x", "--ignore", "123", "--enable", "FURB200"]
-    )
+    command_line_args = parse_args(["--load", "x", "--ignore", "123", "--enable", "FURB200"])
     config_file = parse_config_file(contents)
 
     merged = Settings.merge(config_file, command_line_args)
@@ -197,6 +184,10 @@ quiet = true
         ignore={ErrorCode(100), ErrorCode(101), ErrorCode(123)},
         enable={ErrorCode(111), ErrorCode(222), ErrorCode(200)},
         quiet=True,
+        format="github",
+        sort_by="error",
+        python_version=(3, 7),
+        mypy_args=["some", "args"],
     )
 
 
@@ -232,7 +223,7 @@ def test_parse_error_codes() -> None:
     }
 
     for input, output in tests.items():
-        if output == ValueError:
+        if output is ValueError:
             msg = "must be in form FURB123 or 123"
 
             with pytest.raises(ValueError, match=msg):
@@ -267,9 +258,7 @@ def test_enable_existing_disabled_error() -> None:
 
 
 def test_parse_disable_check_missing_arg() -> None:
-    with pytest.raises(
-        ValueError, match='refurb: missing argument after "--disable"'
-    ):
+    with pytest.raises(ValueError, match='refurb: missing argument after "--disable"'):
         parse_args(["--disable"])
 
 
@@ -319,15 +308,11 @@ disable = ["FURB111", "FURB444"]
 
 
 def test_disable_all_flag_parsing() -> None:
-    assert parse_args(["--disable-all", "file"]) == Settings(
-        files=["file"], disable_all=True
-    )
+    assert parse_args(["--disable-all", "file"]) == Settings(files=["file"], disable_all=True)
 
 
 def test_disable_all_flag_disables_existing_enables() -> None:
-    settings = parse_args(
-        ["--enable", "FURB123", "--disable-all", "--enable", "FURB456"]
-    )
+    settings = parse_args(["--enable", "FURB123", "--disable-all", "--enable", "FURB456"])
 
     assert settings == Settings(disable_all=True, enable={ErrorCode(456)})
 
@@ -428,9 +413,7 @@ disable = ["FURB100", "FURB103"]
 
     merged_settings = Settings.merge(config_file, command_line_args)
 
-    assert merged_settings == Settings(
-        enable_all=True, disable={ErrorCode(105)}
-    )
+    assert merged_settings == Settings(enable_all=True, disable={ErrorCode(105)})
 
 
 def test_parse_config_file_categories() -> None:
@@ -639,3 +622,62 @@ def test_check_sort_by_field_must_be_valid() -> None:
 
     with pytest.raises(ValueError, match=msg):
         parse_args(["--sort", "oops"])
+
+
+def test_disallow_empty_string_in_cli() -> None:
+    tests = [
+        [""],
+        ["file.py", ""],
+    ]
+
+    for test in tests:
+        msg = "refurb: argument cannot be empty"
+
+        with pytest.raises(ValueError, match=msg):
+            parse_args(test)
+
+
+def test_ignored_flags_cause_error() -> None:
+    tests = [
+        ["--help", "file.py"],
+        ["--version", "file.py"],
+        ["-h", "file.py"],
+        ["file.py", "--help"],
+        ["--version", "file.py"],
+        ["file.py", "-h"],
+    ]
+
+    for test in tests:
+        msg = f"refurb: unexpected value before/after `{test[0]}`"
+
+        with pytest.raises(ValueError, match=msg):
+            parse_args(test)
+
+
+def test_generate_subcommand_is_ignored_if_other_files_are_passed() -> None:
+    assert parse_args(["gen", "something"]) == Settings(files=["gen", "something"])
+
+
+def test_parse_verbose_flag() -> None:
+    assert parse_args(["--verbose"]) == Settings(verbose=True)
+    assert parse_args(["-v"]) == Settings(verbose=True)
+
+
+def test_parse_timing_stats_flag() -> None:
+    assert parse_args(["--timing-stats", "file"]) == Settings(timing_stats=Path("file"))
+
+
+def test_parse_timing_stats_flag_without_arg_is_an_error() -> None:
+    with pytest.raises(ValueError, match='refurb: missing argument after "--timing-stats"'):
+        parse_args(["--timing-stats"])
+
+
+def test_parse_no_color_flag() -> None:
+    assert parse_args(["--no-color"]) == Settings(color=False)
+
+
+def test_no_color_env_var_disables_color() -> None:
+    with patch.dict(os.environ, {"NO_COLOR": "1"}):
+        settings = Settings()
+
+        assert not settings.color

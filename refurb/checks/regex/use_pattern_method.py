@@ -35,7 +35,7 @@ class ErrorInfo(Error):
 
     name = "use-regex-pattern-methods"
     code = 170
-    categories = ["readability", "regex"]
+    categories = ("readability", "regex")
 
 
 # This table represents the function calls that we will emit errors for. The
@@ -74,9 +74,7 @@ def check(node: CallExpr, errors: list[Error]) -> None:
                 return
 
             match pattern:
-                case RefExpr(node=Var(type=ty)) if (
-                    str(ty).startswith("re.Pattern[")
-                ):
+                case RefExpr(node=Var(type=ty)) if (str(ty).startswith("re.Pattern[")):
                     pass
 
                 case _:

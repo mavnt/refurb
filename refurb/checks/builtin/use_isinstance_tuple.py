@@ -39,7 +39,7 @@ class ErrorInfo(Error):
 
     name = "use-isinstance-issubclass-tuple"
     code = 121
-    categories = ["python310", "readability"]
+    categories = ("python310", "readability")
 
 
 def check(node: OpExpr, errors: list[Error], settings: Settings) -> None:
@@ -49,13 +49,11 @@ def check(node: OpExpr, errors: list[Error], settings: Settings) -> None:
             CallExpr(callee=NameExpr() as rhs, args=rhs_args),
         ) if (
             lhs.fullname == rhs.fullname
-            and lhs.fullname in ("builtins.isinstance", "builtins.issubclass")
+            and lhs.fullname in {"builtins.isinstance", "builtins.issubclass"}
             and len(lhs_args) == 2
             and is_equivalent(lhs_args[0], rhs_args[0])
         ):
-            type_args = (
-                "y | z" if settings.python_version >= (3, 10) else "(y, z)"
-            )
+            type_args = "y | z" if settings.get_python_version() >= (3, 10) else "(y, z)"
 
             errors.append(
                 ErrorInfo.from_node(

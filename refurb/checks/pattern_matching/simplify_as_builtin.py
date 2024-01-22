@@ -32,7 +32,7 @@ class ErrorInfo(Error):
 
     name = "simplify-as-pattern-with-builtin"
     code = 158
-    categories = ["pattern-matching", "readability"]
+    categories = ("pattern-matching", "readability")
 
 
 BUILTIN_PATTERN_CLASSES = (
@@ -58,10 +58,12 @@ def check(node: AsPattern, errors: list[Error]) -> None:
                 positionals=[],
                 keyword_keys=[],
                 keyword_values=[],
-            )
-        ) if fullname in BUILTIN_PATTERN_CLASSES:
-            errors.append(
-                ErrorInfo.from_node(
-                    node, f"Replace `{name}() as x` with `{name}(x)`"
-                )
-            )
+            ),
+            name=as_name,
+        ) if as_name and fullname in BUILTIN_PATTERN_CLASSES:
+            old = f"{name}() as {as_name.name}"
+            new = f"{name}({as_name.name})"
+
+            msg = f"Replace `{old}` with `{new}`"
+
+            errors.append(ErrorInfo.from_node(node, msg))

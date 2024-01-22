@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 from mypy.nodes import ComparisonExpr, Expression, NameExpr, Var
 
+from refurb.checks.common import stringify
 from refurb.error import Error
 
 
@@ -32,7 +33,7 @@ class ErrorInfo(Error):
 
     name = "no-bool-literal-compare"
     code = 149
-    categories = ["logical", "readability", "truthy"]
+    categories = ("logical", "readability", "truthy")
 
 
 def is_bool_literal(expr: Expression) -> bool:
@@ -54,7 +55,7 @@ def is_bool_variable(expr: Expression) -> bool:
 def is_truthy(oper: str, name: str) -> bool:
     value = name == "True"
 
-    return not value if oper in ("is not", "!=") else value
+    return not value if oper in {"is not", "!="} else value
 
 
 def check(node: ComparisonExpr, errors: list[Error]) -> None:
@@ -64,16 +65,18 @@ def check(node: ComparisonExpr, errors: list[Error]) -> None:
             operands=[NameExpr() as lhs, NameExpr() as rhs],
         ):
             if is_bool_literal(lhs) and is_bool_variable(rhs):
-                old = f"{lhs.name} {oper} x"
-                new = "x" if is_truthy(oper, lhs.name) else "not x"
+                expr = stringify(rhs)
+
+                old = f"{lhs.name} {oper} {expr}"
+                new = expr if is_truthy(oper, lhs.name) else f"not {expr}"
 
             elif is_bool_variable(lhs) and is_bool_literal(rhs):
-                old = f"x {oper} {rhs.name}"
-                new = "x" if is_truthy(oper, rhs.name) else "not x"
+                expr = stringify(lhs)
+
+                old = f"{expr} {oper} {rhs.name}"
+                new = expr if is_truthy(oper, rhs.name) else f"not {expr}"
 
             else:
                 return
 
-            errors.append(
-                ErrorInfo.from_node(node, f"Replace `{old}` with `{new}`")
-            )
+            errors.append(ErrorInfo.from_node(node, f"Replace `{old}` with `{new}`"))

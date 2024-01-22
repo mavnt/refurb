@@ -37,7 +37,7 @@ class ErrorInfo(Error):
     name = "use-pathlib-touch"
     enabled = False
     code = 151
-    categories = ["pathlib"]
+    categories = ("pathlib",)
 
 
 def check(node: CallExpr, errors: list[Error]) -> None:
@@ -56,7 +56,5 @@ def check(node: CallExpr, errors: list[Error]) -> None:
             new = "x.touch()" if is_pathlike(arg) else "Path(x).touch()"
 
             errors.append(
-                ErrorInfo.from_node(
-                    node, f'Replace `open(x, "{mode}").close()` with `{new}`'
-                )
+                ErrorInfo.from_node(node, f'Replace `open(x, "{mode}").close()` with `{new}`')
             )

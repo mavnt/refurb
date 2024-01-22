@@ -22,10 +22,9 @@ from mypy.nodes import (
     Var,
     WhileStmt,
 )
-from mypy.traverser import TraverserVisitor
 
 from refurb.error import Error
-from refurb.visitor import METHOD_NODE_MAPPINGS
+from refurb.visitor import METHOD_NODE_MAPPINGS, TraverserVisitor
 
 
 @dataclass
@@ -61,12 +60,13 @@ class ErrorInfo(Error):
 
     name = "no-len-compare"
     code = 115
-    categories = ["iterable", "truthy"]
+    categories = ("iterable", "truthy")
 
 
 CONTAINER_TYPES = {
     "builtins.list",
     "builtins.tuple",
+    "tuple[",
     "builtins.dict",
     "builtins.set",
     "builtins.frozenset",
@@ -88,9 +88,7 @@ def is_builtin_container_like(node: Expression) -> bool:
         case NameExpr(node=Var(type=ty)) if is_builtin_container_type(str(ty)):
             return True
 
-        case CallExpr(
-            callee=NameExpr(fullname=name)
-        ) if is_builtin_container_type(name):
+        case CallExpr(callee=NameExpr(fullname=name)) if is_builtin_container_type(name):
             return True
 
         case DictExpr() | ListExpr() | StrExpr() | TupleExpr():
@@ -128,13 +126,17 @@ class LenComparisonVisitor(TraverserVisitor):
         self.errors = errors
 
         for name, ty in METHOD_NODE_MAPPINGS.items():
-            if ty in (ComparisonExpr, UnaryExpr, OpExpr, CallExpr):
+            if ty in {ComparisonExpr, UnaryExpr, OpExpr, CallExpr}:
                 continue
 
             def inner(self: "LenComparisonVisitor", _: Node) -> None:
                 return
 
             setattr(self, name, inner.__get__(self))
+
+    def visit_op_expr(self, o: OpExpr) -> None:
+        if o.op in {"and", "or"}:
+            super().visit_op_expr(o)
 
     def visit_comparison_expr(self, node: ComparisonExpr) -> None:
         match node:
@@ -150,9 +152,7 @@ class LenComparisonVisitor(TraverserVisitor):
                 expr = "x" if is_truthy else "not x"
 
                 self.errors.append(
-                    ErrorInfo.from_node(
-                        node, f"Replace `len(x) {oper} {num}` with `{expr}`"
-                    )
+                    ErrorInfo.from_node(node, f"Replace `len(x) {oper} {num}` with `{expr}`")
                 )
 
             case ComparisonExpr(
@@ -169,16 +169,12 @@ class LenComparisonVisitor(TraverserVisitor):
                 expr = "not x" if oper == "==" else "x"
 
                 self.errors.append(
-                    ErrorInfo.from_node(
-                        node, f"Replace `x {oper} {old_expr}` with `{expr}`"
-                    )
+                    ErrorInfo.from_node(node, f"Replace `x {oper} {old_expr}` with `{expr}`")
                 )
 
     def visit_call_expr(self, node: CallExpr) -> None:
         if is_len_call(node):
-            self.errors.append(
-                ErrorInfo.from_node(node, "Replace `len(x)` with `x`")
-            )
+            self.errors.append(ErrorInfo.from_node(node, "Replace `len(x)` with `x`"))
 
 
 ConditionLikeNode = (
@@ -203,24 +199,17 @@ def check_condition_like(
     match node:
         case IfStmt(expr=exprs):
             for expr in exprs:
-                expr.accept(visitor)
+                visitor.accept(expr)
 
         case MatchStmt(guards=guards) if guards:
             for guard in guards:
                 if guard:
-                    guard.accept(visitor)
+                    visitor.accept(guard)
 
-        case (
-            GeneratorExpr(condlists=conditions)
-            | DictionaryComprehension(condlists=conditions)
-        ):
+        case (GeneratorExpr(condlists=conditions) | DictionaryComprehension(condlists=conditions)):
             for condition in conditions:
                 for expr in condition:
-                    expr.accept(visitor)
+                    visitor.accept(expr)
 
-        case (
-            ConditionalExpr(cond=expr)
-            | WhileStmt(expr=expr)
-            | AssertStmt(expr=expr)
-        ):
-            expr.accept(visitor)
+        case (ConditionalExpr(cond=expr) | WhileStmt(expr=expr) | AssertStmt(expr=expr)):
+            visitor.accept(expr)

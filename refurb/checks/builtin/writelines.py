@@ -16,14 +16,14 @@ from refurb.error import Error
 
 @dataclass
 class ErrorInfo(Error):
-    """
+    r"""
     When you want to write a list of lines to a file, don't call `.write()`
     for every line, use `.writelines()` instead:
 
     Bad:
 
     ```
-    lines = ["line 1", "line 2", "line 3"]
+    lines = ["line 1\n", "line 2\n", "line 3\n"]
 
     with open("file") as f:
         for line in lines:
@@ -33,7 +33,7 @@ class ErrorInfo(Error):
     Good:
 
     ```
-    lines = ["line 1", "line 2", "line 3"]
+    lines = ["line 1\n", "line 2\n", "line 3\n"]
 
     with open("file") as f:
         f.writelines(lines)
@@ -43,14 +43,14 @@ class ErrorInfo(Error):
     need to use a list comprehension instead. For example:
 
     ```
-    f.writelines(f"{line}\\n" for line in lines)
+    f.writelines(f"{line}\n" for line in lines)
     ```
     """
 
     name = "use-writelines"
     code = 122
-    msg: str = "Replace `for line in lines: f.write(line)` with `f.writelines(lines)`"  # noqa: E501
-    categories = ["builtin", "readability"]
+    msg: str = "Replace `for line in lines: f.write(line)` with `f.writelines(lines)`"
+    categories = ("builtin", "readability")
 
 
 def check(node: WithStmt, errors: list[Error]) -> None:

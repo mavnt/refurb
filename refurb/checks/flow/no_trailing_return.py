@@ -1,15 +1,7 @@
 from collections.abc import Generator
 from dataclasses import dataclass
 
-from mypy.nodes import (
-    Block,
-    FuncItem,
-    IfStmt,
-    MatchStmt,
-    ReturnStmt,
-    Statement,
-    WithStmt,
-)
+from mypy.nodes import Block, FuncItem, IfStmt, MatchStmt, ReturnStmt, Statement, WithStmt
 from mypy.patterns import AsPattern
 
 from refurb.error import Error
@@ -57,7 +49,7 @@ class ErrorInfo(Error):
     name = "no-redundant-return"
     code = 125
     msg: str = "Return is redundant here"
-    categories = ["control-flow", "readability"]
+    categories = ("control-flow", "readability")
 
 
 def get_trailing_return(node: Statement) -> Generator[Statement, None, None]:
@@ -76,10 +68,7 @@ def get_trailing_return(node: Statement) -> Generator[Statement, None, None]:
 
                 yield from get_trailing_return(body.body[-1])
 
-        case (
-            IfStmt(else_body=Block(body=[*_, stmt]))
-            | WithStmt(body=Block(body=[*_, stmt]))
-        ):
+        case (IfStmt(else_body=Block(body=[*_, stmt])) | WithStmt(body=Block(body=[*_, stmt]))):
             yield from get_trailing_return(stmt)
 
     return None
@@ -91,5 +80,4 @@ def check(node: FuncItem, errors: list[Error]) -> None:
             if not prev and isinstance(stmt, ReturnStmt):
                 return
 
-            for return_node in get_trailing_return(stmt):
-                errors.append(ErrorInfo.from_node(return_node))
+            errors.extend(ErrorInfo.from_node(x) for x in get_trailing_return(stmt))

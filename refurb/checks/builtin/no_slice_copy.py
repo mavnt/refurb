@@ -1,9 +1,10 @@
 from dataclasses import dataclass
 
-from mypy.nodes import AssignmentStmt, DelStmt, IndexExpr, MypyFile, SliceExpr
-from mypy.traverser import TraverserVisitor
+from mypy.nodes import AssignmentStmt, DelStmt, IndexExpr, MypyFile, RefExpr, SliceExpr, Var
 
+from refurb.checks.common import stringify
 from refurb.error import Error
+from refurb.visitor import TraverserVisitor
 
 
 @dataclass
@@ -29,8 +30,15 @@ class ErrorInfo(Error):
 
     name = "no-slice-copy"
     code = 145
-    msg: str = "Replace `x[:]` with `x.copy()`"
-    categories = ["readability"]
+    categories = ("readability",)
+
+
+SEQUENCE_BUILTINS = (
+    "builtins.bytearray",
+    "builtins.list[",
+    "builtins.tuple[",
+    "tuple[",
+)
 
 
 class SliceExprVisitor(TraverserVisitor):
@@ -42,21 +50,28 @@ class SliceExprVisitor(TraverserVisitor):
         self.errors = errors
 
     def visit_assignment_stmt(self, node: AssignmentStmt) -> None:
-        node.rvalue.accept(self)
+        self.accept(node.rvalue)
 
     def visit_del_stmt(self, node: DelStmt) -> None:
         if not isinstance(node.expr, IndexExpr):
-            node.expr.accept(self)
+            self.accept(node.expr)
 
     def visit_index_expr(self, node: IndexExpr) -> None:
-        index = node.index
+        match node.base:
+            case RefExpr(node=Var(type=ty)):
+                if not str(ty).startswith(SEQUENCE_BUILTINS):
+                    return
 
-        if (
-            isinstance(index, SliceExpr)
-            and index.begin_index is index.end_index is index.stride is None
-        ):
-            self.errors.append(ErrorInfo.from_node(node))
+            case _:
+                return
+
+        match node.index:
+            case SliceExpr(begin_index=None, end_index=None, stride=None):
+                base = stringify(node.base)
+                msg = f"Replace `{base}[:]` with `{base}.copy()`"
+
+                self.errors.append(ErrorInfo.from_node(node, msg))
 
 
 def check(node: MypyFile, errors: list[Error]) -> None:
-    node.accept(SliceExprVisitor(errors))
+    SliceExprVisitor(errors).accept(node)

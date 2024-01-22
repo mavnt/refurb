@@ -30,7 +30,7 @@ class ErrorInfo(Error):
 
     name = "use-pathlib-stat"
     code = 155
-    categories = ["pathlib"]
+    categories = ("pathlib",)
 
 
 PATH_TO_PATHLIB_NAMES = {
@@ -60,7 +60,7 @@ def check(node: CallExpr, errors: list[Error]) -> None:
                         pass
 
                     case NameExpr(node=Var(type=ty)) if (
-                        str(ty) in ("builtins.str", "builtins.bytes")
+                        str(ty) in {"builtins.str", "builtins.bytes"}
                     ):
                         pass
 
@@ -70,7 +70,5 @@ def check(node: CallExpr, errors: list[Error]) -> None:
                 replace = f"Path(x).{new_name}"
 
             errors.append(
-                ErrorInfo.from_node(
-                    node, f"Replace `{normalized_name}(x)` with `{replace}`"
-                )
+                ErrorInfo.from_node(node, f"Replace `{normalized_name}(x)` with `{replace}`")
             )

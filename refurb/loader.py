@@ -60,16 +60,12 @@ def is_valid_error_class(obj: Any) -> TypeGuard[type[Error]]:  # type: ignore
     name = obj.__name__
     ignored_names = ("Error", "ErrorCode", "ErrorCategory")
 
-    return (
-        name.startswith("Error")
-        and name not in ignored_names
-        and issubclass(obj, Error)
-    )
+    return name.startswith("Error") and name not in ignored_names and issubclass(obj, Error)
 
 
 def get_error_class(module: ModuleType) -> type[Error] | None:
     for name in dir(module):
-        if name.startswith("Error") and name not in ("Error", "ErrorCode"):
+        if name.startswith("Error") and name not in {"Error", "ErrorCode"}:
             error = getattr(module, name)
 
             if is_valid_error_class(error):
@@ -102,9 +98,7 @@ VALID_NODE_TYPES = set(METHOD_NODE_MAPPINGS.values())
 VALID_OPTIONAL_ARGS = (("settings", Settings),)
 
 
-def type_error_with_line_info(  # type: ignore
-    func: Any, msg: str
-) -> TypeError:
+def type_error_with_line_info(func: Any, msg: str) -> TypeError:  # type: ignore
     filename = getsourcefile(func)
     line = getsourcelines(func)[1]
 
@@ -122,10 +116,8 @@ def extract_function_types(  # type: ignore
 
     params = list(signature(func).parameters.values())
 
-    if len(params) not in (2, 3):
-        raise type_error_with_line_info(
-            func, "Check function must take 2-3 parameters"
-        )
+    if len(params) not in {2, 3}:
+        raise type_error_with_line_info(func, "Check function must take 2-3 parameters")
 
     node_param = params[0].annotation
     error_param = params[1].annotation
@@ -133,12 +125,10 @@ def extract_function_types(  # type: ignore
 
     if not (
         type(error_param) == GenericAlias
-        and error_param.__origin__ == list
-        and error_param.__args__[0] == Error
+        and error_param.__origin__ is list
+        and error_param.__args__[0] is Error
     ):
-        raise type_error_with_line_info(
-            func, '"error" param must be of type list[Error]'
-        )
+        raise type_error_with_line_info(func, '"error" param must be of type list[Error]')
 
     for param in optional_params:
         if (param.name, param.annotation) not in VALID_OPTIONAL_ARGS:
@@ -170,6 +160,7 @@ def extract_function_types(  # type: ignore
 
 def load_checks(settings: Settings) -> defaultdict[type[Node], list[Check]]:
     found: defaultdict[type[Node], list[Check]] = defaultdict(list)
+    enabled_errors: set[str] = set()
 
     for module in get_modules(settings.load):
         error = get_error_class(module)
@@ -178,5 +169,12 @@ def load_checks(settings: Settings) -> defaultdict[type[Node], list[Check]]:
             if func := getattr(module, "check", None):
                 for ty in extract_function_types(func):
                     found[ty].append(func)
+
+            enabled_errors.add(str(ErrorCode.from_error(error)))
+
+    if settings.verbose:
+        msg = ", ".join(sorted(enabled_errors)) if enabled_errors else "No checks enabled"
+
+        print(f"Enabled checks: {msg}\n")
 
     return found

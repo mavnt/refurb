@@ -79,10 +79,7 @@ def get_full_type_name(node: CallExpr) -> str:
         case CallExpr(
             callee=MemberExpr(
                 expr=NameExpr(
-                    node=(
-                        Var(type=Instance(type=TypeInfo() as ty))
-                        | (TypeInfo() as ty)
-                    )
+                    node=(Var(type=Instance(type=TypeInfo() as ty)) | (TypeInfo() as ty))
                 ),
                 name=name,
             ),
@@ -104,9 +101,7 @@ def inject_stdlib_defaults(node: CallExpr, args: list[Argument]) -> None:
 ZippedArg = tuple[str | None, Expression, ArgKind]
 
 
-def strip_caller_var_args(
-    start: int, args: Iterator[ZippedArg]
-) -> Iterator[ZippedArg]:
+def strip_caller_var_args(start: int, args: Iterator[ZippedArg]) -> Iterator[ZippedArg]:
     for i, arg in enumerate(args):
         if i < start:
             continue
@@ -118,11 +113,7 @@ def strip_caller_var_args(
 def check_func(caller: CallExpr, func: FuncDef, errors: list[Error]) -> None:
     args = list(zip(func.arg_names, func.arguments))
 
-    if (
-        isinstance(caller.callee, MemberExpr)
-        and args
-        and func.arg_names[0] in ("self", "cls")
-    ):
+    if isinstance(caller.callee, MemberExpr) and args and func.arg_names[0] in {"self", "cls"}:
         args.pop(0)
 
     lookup = dict(args)
@@ -134,6 +125,8 @@ def check_func(caller: CallExpr, func: FuncDef, errors: list[Error]) -> None:
     for i, arg in enumerate(args):
         if arg[1].kind == ArgKind.ARG_STAR:
             caller_args = strip_caller_var_args(i, caller_args)  # type: ignore
+
+    temp_errors: list[Error] = []
 
     for i, (name, value, kind) in enumerate(caller_args):
         if i >= len(args):
@@ -152,12 +145,19 @@ def check_func(caller: CallExpr, func: FuncDef, errors: list[Error]) -> None:
             return  # pragma: no cover
 
         if default and is_equivalent(value, default):
-            errors.append(ErrorInfo.from_node(value))
+            temp_errors.append(ErrorInfo.from_node(value))
+
+        elif kind == ArgKind.ARG_POS:
+            # Since this arg is not a default value and cannot be deleted,
+            # deleting previous default args would cause this arg to become
+            # misaligned. If this was a kwarg it wouldn't be an issue because
+            # the position would not be affected during deletion.
+            temp_errors = []
+
+    errors.extend(temp_errors)
 
 
-def check_symbol(
-    node: CallExpr, symbol: SymbolNode | None, errors: list[Error]
-) -> None:
+def check_symbol(node: CallExpr, symbol: SymbolNode | None, errors: list[Error]) -> None:
     match symbol:
         case Decorator(func=FuncDef() as func) | (FuncDef() as func):
             check_func(node, func, errors)
@@ -182,8 +182,9 @@ def check_symbol(
         case TypeInfo():
             for func_name in ("__new__", "__init__"):
                 if new_symbol := symbol.names.get(func_name):
-                    if new_symbol.node:
-                        check_symbol(node, new_symbol.node, errors)
+                    assert new_symbol.node
+
+                    check_symbol(node, new_symbol.node, errors)
 
 
 def check(node: CallExpr, errors: list[Error]) -> None:
@@ -195,18 +196,10 @@ def check(node: CallExpr, errors: list[Error]) -> None:
         case CallExpr(
             callee=MemberExpr(
                 expr=(
-                    NameExpr(
-                        node=(
-                            Var(type=Instance(type=TypeInfo() as ty))
-                            | (TypeInfo() as ty)
-                        )
-                    )
+                    NameExpr(node=(Var(type=Instance(type=TypeInfo() as ty)) | (TypeInfo() as ty)))
                     | CallExpr(
                         callee=NameExpr(
-                            node=(
-                                Var(type=Instance(type=TypeInfo() as ty))
-                                | (TypeInfo() as ty)
-                            )
+                            node=(Var(type=Instance(type=TypeInfo() as ty)) | (TypeInfo() as ty))
                         )
                     )
                 ),

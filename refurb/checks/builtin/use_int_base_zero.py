@@ -1,14 +1,8 @@
 from dataclasses import dataclass
 
-from mypy.nodes import (
-    ArgKind,
-    CallExpr,
-    IndexExpr,
-    IntExpr,
-    RefExpr,
-    SliceExpr,
-)
+from mypy.nodes import ArgKind, CallExpr, IndexExpr, IntExpr, RefExpr, SliceExpr
 
+from refurb.checks.common import stringify
 from refurb.error import Error
 
 
@@ -54,7 +48,7 @@ class ErrorInfo(Error):
     enabled = False
     name = "use-int-base-zero"
     code = 166
-    categories = ["builtin", "readability"]
+    categories = ("builtin", "readability")
 
 
 def check(node: CallExpr, errors: list[Error]) -> None:
@@ -63,6 +57,7 @@ def check(node: CallExpr, errors: list[Error]) -> None:
             callee=RefExpr(fullname="builtins.int"),
             args=[
                 IndexExpr(
+                    base=index_base,
                     index=SliceExpr(
                         begin_index=IntExpr(value=2),
                         end_index=None,
@@ -76,9 +71,10 @@ def check(node: CallExpr, errors: list[Error]) -> None:
         ):
             kw = "base=" if arg_kinds[1] == ArgKind.ARG_NAMED else ""
 
-            errors.append(
-                ErrorInfo.from_node(
-                    node,
-                    f"Replace `int(x[2:], {kw}{base})` with `int(x, {kw}0)`",
-                )
-            )
+            index_base_expr = stringify(index_base)
+
+            old = f"int({index_base_expr}[2:], {kw}{base})"
+            new = f"int({index_base_expr}, {kw}0)"
+            msg = f"Replace `{old}` with `{new}`"
+
+            errors.append(ErrorInfo.from_node(node, msg))

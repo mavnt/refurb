@@ -41,11 +41,11 @@ class ErrorInfo(Error):
 
     name = "use-bit-count"
     code = 161
-    categories = ["builtin", "performance", "python310", "readability"]
+    categories = ("builtin", "performance", "python310", "readability")
 
 
 def check(node: CallExpr, errors: list[Error], settings: Settings) -> None:
-    if settings.python_version < (3, 10):
+    if settings.get_python_version() < (3, 10):
         return  # pragma: no cover
 
     match node:
@@ -85,7 +85,5 @@ def check(node: CallExpr, errors: list[Error], settings: Settings) -> None:
                 x = "(x)"
 
             errors.append(
-                ErrorInfo.from_node(
-                    node, f'Replace `{old}.count("1")` with `{x}.bit_count()`'
-                )
+                ErrorInfo.from_node(node, f'Replace `{old}.count("1")` with `{x}.bit_count()`')
             )

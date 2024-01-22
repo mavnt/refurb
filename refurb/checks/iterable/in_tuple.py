@@ -14,7 +14,7 @@ class ErrorInfo(Error):
     Bad:
 
     ```
-    for x in [1, 2, 3]:
+    for x in (1, 2, 3):
         pass
 
     nums = [str(x) for x in [1, 2, 3]]
@@ -35,16 +35,14 @@ class ErrorInfo(Error):
     # with a variety of bracket types.
     name = "use-consistent-in-bracket"
     code = 109
-    categories = ["iterable", "readability"]
+    categories = ("iterable", "readability")
 
 
 def error_msg(oper: str) -> str:
     return f"Replace `{oper} [x, y, z]` with `{oper} (x, y, z)`"
 
 
-def check(
-    node: ComparisonExpr | ForStmt | GeneratorExpr, errors: list[Error]
-) -> None:
+def check(node: ComparisonExpr | ForStmt | GeneratorExpr, errors: list[Error]) -> None:
     match node:
         case ComparisonExpr(
             operators=["in" | "not in" as oper],
@@ -56,6 +54,8 @@ def check(
             errors.append(ErrorInfo.from_node(expr, error_msg("in")))
 
         case GeneratorExpr():
-            for expr in node.sequences:  # type: ignore
-                if isinstance(expr, ListExpr):
-                    errors.append(ErrorInfo.from_node(expr, error_msg("in")))
+            errors.extend(
+                ErrorInfo.from_node(expr, error_msg("in"))
+                for expr in node.sequences
+                if isinstance(expr, ListExpr)
+            )

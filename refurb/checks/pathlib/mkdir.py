@@ -11,7 +11,7 @@ from .util import is_pathlike
 @dataclass
 class ErrorInfo(Error):
     """
-    Use the `mkdir` function from the pathlib library instead of using the
+    Use the `mkdir` method from the pathlib library instead of using the
     `mkdir` and `makedirs` functions from the `os` library: the pathlib library
     is more modern and provides better flexibility over the construction and
     manipulation of file paths.
@@ -35,7 +35,7 @@ class ErrorInfo(Error):
 
     name = "use-pathlib-mkdir"
     code = 150
-    categories = ["pathlib"]
+    categories = ("pathlib",)
 
 
 def create_error(node: CallExpr) -> list[Error]:
@@ -62,22 +62,14 @@ def create_error(node: CallExpr) -> list[Error]:
 
     new_args = ", ".join(new_args)
 
-    expr = (
-        f"x.mkdir({new_args})"
-        if is_pathlike(node.args[0])
-        else f"Path(x).mkdir({new_args})"
-    )
+    expr = f"x.mkdir({new_args})" if is_pathlike(node.args[0]) else f"Path(x).mkdir({new_args})"
 
     return [
-        ErrorInfo.from_node(
-            node, f"Replace `{fullname}({', '.join(old_args)})` with `{expr}`"
-        )
+        ErrorInfo.from_node(node, f"Replace `{fullname}({', '.join(old_args)})` with `{expr}`")
     ]
 
 
 def check(node: CallExpr, errors: list[Error]) -> None:
     match node:
-        case CallExpr(
-            callee=RefExpr(fullname="os.mkdir" | "os.makedirs"), args=args
-        ) if args:
+        case CallExpr(callee=RefExpr(fullname="os.mkdir" | "os.makedirs"), args=args) if args:
             errors.extend(create_error(node))

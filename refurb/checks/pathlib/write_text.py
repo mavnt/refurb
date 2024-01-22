@@ -1,14 +1,6 @@
 from dataclasses import dataclass
 
-from mypy.nodes import (
-    Block,
-    CallExpr,
-    ExpressionStmt,
-    MemberExpr,
-    NameExpr,
-    StrExpr,
-    WithStmt,
-)
+from mypy.nodes import Block, CallExpr, ExpressionStmt, MemberExpr, NameExpr, StrExpr, WithStmt
 
 from refurb.error import Error
 
@@ -17,7 +9,7 @@ from refurb.error import Error
 class ErrorInfo(Error):
     """
     When you just want to save some contents to a file, using a `with` block is
-    a bit overkill. Instead you can use pathlib's `write_text()` function:
+    a bit overkill. Instead you can use pathlib's `write_text()` method:
 
     Bad:
 
@@ -35,25 +27,19 @@ class ErrorInfo(Error):
 
     name = "use-pathlib-write-text-write-bytes"
     code = 103
-    categories = ["pathlib"]
+    categories = ("pathlib",)
 
 
 def check(node: WithStmt, errors: list[Error]) -> None:
     match node:
         case WithStmt(
-            expr=[
-                CallExpr(
-                    callee=NameExpr(name="open"), args=[_, StrExpr(value=mode)]
-                )
-            ],
+            expr=[CallExpr(callee=NameExpr(name="open"), args=[_, StrExpr(value=mode)])],
             target=[NameExpr(name=with_name)],
             body=Block(
                 body=[
                     ExpressionStmt(
                         expr=CallExpr(
-                            callee=MemberExpr(
-                                expr=NameExpr(name=write_name), name="write"
-                            )
+                            callee=MemberExpr(expr=NameExpr(name=write_name), name="write")
                         )
                     )
                 ]

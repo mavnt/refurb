@@ -20,7 +20,7 @@ class ErrorInfo(Error):
 
     # and
 
-    if x is None and y is None
+    if x is None and y is None:
         pass
     ```
 
@@ -41,7 +41,7 @@ class ErrorInfo(Error):
 
     name = "use-comparison-chain"
     code = 124
-    categories = ["logical", "readability"]
+    categories = ("logical", "readability")
 
 
 def create_message(indices: tuple[int, int], oper: str = "==") -> str:
@@ -58,6 +58,4 @@ def check(node: OpExpr, errors: list[Error]) -> None:
         if data := get_common_expr_in_comparison_chain(node, "and", cmp_oper):
             expr, indices = data
 
-            errors.append(
-                ErrorInfo.from_node(expr, create_message(indices, cmp_oper))
-            )
+            errors.append(ErrorInfo.from_node(expr, create_message(indices, cmp_oper)))

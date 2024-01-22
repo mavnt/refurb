@@ -30,7 +30,7 @@ class ErrorInfo(Error):
 
     name = "use-long-regex-flag"
     code = 167
-    categories = ["readability", "regex"]
+    categories = ("readability", "regex")
 
 
 SHORT_TO_LONG_FLAG = {
@@ -50,7 +50,5 @@ def check(node: NameExpr | MemberExpr, errors: list[Error]) -> None:
         case RefExpr(fullname=fullname):
             if long_name := SHORT_TO_LONG_FLAG.get(fullname):
                 errors.append(
-                    ErrorInfo.from_node(
-                        node, f"Replace `{fullname}` with `{long_name}`"
-                    )
+                    ErrorInfo.from_node(node, f"Replace `{fullname}` with `{long_name}`")
                 )

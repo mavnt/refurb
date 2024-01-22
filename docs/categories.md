@@ -2,6 +2,10 @@
 
 Here is a list of the built-in categories in Refurb, and their meanings.
 
+## `abc`
+
+These check for code relating to [Abstract Base Classes](https://docs.python.org/3/library/abc.html).
+
 ## `builtin`
 
 Checks that have the `builtin` category cover a few different topics:
@@ -38,6 +42,10 @@ These checks cover:
 * Usage of `dict` objects
 * In some cases, objects supporting the [Mapping](https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping) protocol
 
+## `fastapi`
+
+These are checks relating to the third-party [FastAPI](https://github.com/tiangolo/fastapi) library.
+
 ## `fstring`
 
 These checks relate to Python's [f-strings](https://fstring.help/).
@@ -50,6 +58,11 @@ standard library module.
 ## `functools`
 
 These checks relate to the [functools](https://docs.python.org/3/library/functools.html)
+standard library module.
+
+## `hashlib`
+
+These checks relate to the [hashlib](https://docs.python.org/3/library/hashlib.html)
 standard library module.
 
 ## `iterable`
@@ -126,14 +139,24 @@ These checks are for the [`re`](https://docs.python.org/3/library/contextlib.htm
 These checks have to do with Python's scoping rules. For more info on how Python's scoping
 rules work, read [this article](https://realpython.com/python-scope-legb-rule/).
 
-## `string`
+## `secrets`
 
-These checks deal with usage of [`str`](https://docs.python.org/3/library/stdtypes.html#string-methods)
-objects in Python.
+These checks are for the [secrets](https://docs.python.org/3/library/secrets.html)
+standard library module.
 
 ## `set`
 
 These checks deal with usage of [`set`](https://docs.python.org/3/tutorial/datastructures.html#sets)
+objects in Python.
+
+## `shlex`
+
+These checks are for the [shlex](https://docs.python.org/3/library/shlex.html)
+standard library module.
+
+## `string`
+
+These checks deal with usage of [`str`](https://docs.python.org/3/library/stdtypes.html#string-methods)
 objects in Python.
 
 ## `truthy`

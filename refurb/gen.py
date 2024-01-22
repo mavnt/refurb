@@ -2,6 +2,7 @@ import os
 import sys
 from collections import defaultdict
 from contextlib import suppress
+from operator import itemgetter
 from pathlib import Path
 from subprocess import PIPE, run
 
@@ -53,8 +54,8 @@ def fzf(data: list[str] | None, args: list[str]) -> str:
         "FZF_DEFAULT_COMMAND": "find refurb -name '*.py' -not -path '*__*' 2> /dev/null || true",  # noqa: E501
     }
 
-    process = run(
-        ["fzf", "--height=20", *args],
+    process = run(  # noqa: PLW1510
+        ["fzf", "--height=20", *args],  # noqa: S603, S607
         env=env,
         stdout=PIPE,
         input=bytes("\n".join(data), "utf8") if data else None,
@@ -97,11 +98,7 @@ NODES: dict[str, type] = {x.__name__: x for x in METHOD_NODE_MAPPINGS.values()}
 
 
 def node_type_prompt() -> list[str]:
-    return sorted(
-        fzf(
-            list(NODES.keys()), args=["--prompt", "type> ", "--multi"]
-        ).splitlines()
-    )
+    return sorted(fzf(list(NODES.keys()), args=["--prompt", "type> ", "--multi"]).splitlines())
 
 
 def filename_prompt() -> Path:
@@ -120,9 +117,7 @@ def filename_prompt() -> Path:
 
 
 def prefix_prompt() -> str:
-    return fzf(
-        [""], args=["--prompt", "prefix> ", "--print-query", "--query", "FURB"]
-    )
+    return fzf([""], args=["--prompt", "prefix> ", "--print-query", "--query", "FURB"])
 
 
 def build_imports(names: list[str]) -> str:
@@ -133,7 +128,7 @@ def build_imports(names: list[str]) -> str:
 
     return "\n".join(
         f"from {module} import {', '.join(names)}"
-        for module, names in sorted(modules.items(), key=lambda x: x[0])
+        for module, names in sorted(modules.items(), key=itemgetter(0))
     )
 
 

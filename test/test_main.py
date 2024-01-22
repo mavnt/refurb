@@ -1,8 +1,11 @@
+import json
 import os
 from dataclasses import dataclass
 from functools import partial
 from importlib import metadata
 from locale import LC_ALL, setlocale
+from pathlib import Path
+from tempfile import NamedTemporaryFile
 from unittest.mock import patch
 
 import pytest
@@ -125,11 +128,10 @@ def test_help_flag_calls_print():
 
 
 def test_version_flag_calls_version_func():
-    for args in (["--version"], ["-v"]):
-        with patch("refurb.main.version") as p:
-            main(args)
+    with patch("refurb.main.version") as p:
+        main(["--version"])
 
-            p.assert_called_once()
+        p.assert_called_once()
 
 
 def test_explain_flag_mentioned_if_error_exists():
@@ -221,6 +223,17 @@ def test_amended_ignores_are_relative_to_config_file():
     assert not errors
 
 
+def test_raise_error_if_config_file_is_invalid():
+    tests = {
+        ".": "is a directory",
+        "file_not_found": "was not found",
+    }
+
+    for config_file, expected in tests.items():
+        with pytest.raises(ValueError, match=expected):
+            load_settings(["--config-file", config_file])
+
+
 def test_mypy_args_are_forwarded() -> None:
     errors = run_refurb(Settings(mypy_args=["--version"]))
 
@@ -234,3 +247,79 @@ def test_stub_files_dont_hide_errors() -> None:
 
     assert len(errors) == 1
     assert "FURB123" in str(errors[0])
+
+
+def test_verbose_flag_prints_all_enabled_checks() -> None:
+    with patch("builtins.print") as p:
+        main(["test/data/err_100.py", "--verbose", "--enable-all"])
+
+    stdout = "\n".join(args[0][0] for args in p.call_args_list)
+
+    # Current number of checks at time of writing. This number doesn't need to
+    # be kept updated, it is only set to a known value to verify that it is
+    # doing what it should.
+    current_check_count = 76
+
+    for error_id in range(100, 100 + current_check_count):
+        assert f"FURB{error_id}" in stdout
+
+
+def test_verbose_flag_prints_message_when_all_checks_disabled() -> None:
+    with patch("builtins.print") as p:
+        main(["test/data/err_100.py", "--verbose", "--disable-all"])
+
+    stdout = "\n".join(args[0][0] for args in p.call_args_list)
+
+    assert "FURB100" not in stdout
+    assert "No checks enabled" in stdout
+
+
+def test_timing_stats_outputs_stats_file() -> None:
+    with NamedTemporaryFile(mode="r", encoding="utf8") as tmp:
+        main(["test/e2e/dummy.py", "--timing-stats", tmp.name])
+
+        stats_file = Path(tmp.name)
+
+        assert stats_file.exists()
+
+        data = json.loads(stats_file.read_text())
+
+        match data:
+            case {
+                "mypy_total_time_spent_in_ms": int(_),
+                "mypy_time_spent_parsing_modules_in_ms": dict(mypy_timing),
+                "refurb_time_spent_checking_file_in_ms": dict(refurb_timing),
+            }:
+                msg = "All values must be ints"
+
+                assert all(isinstance(v, int) for v in mypy_timing.values()), msg
+
+                assert all(isinstance(v, int) for v in refurb_timing.values()), msg
+
+                return
+
+        pytest.fail("Data is not in proper format")
+
+
+def test_color_is_enabled_by_default():
+    with patch("builtins.print") as p:
+        main(["test/data/err_123.py"])
+
+        p.assert_called_once()
+        assert "\x1b" in p.call_args[0][0]
+
+
+def test_no_color_printed_when_disabled():
+    with patch("builtins.print") as p:
+        main(["test/data/err_123.py", "--no-color"])
+
+        p.assert_called_once()
+        assert "\x1b" not in p.call_args[0][0]
+
+
+def test_error_github_actions_formatting():
+    with patch("builtins.print") as p:
+        main(["test/data/err_123.py", "--format", "github"])
+
+        p.assert_called_once()
+        assert "::error" in p.call_args[0][0]

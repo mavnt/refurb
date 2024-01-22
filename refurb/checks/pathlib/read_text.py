@@ -1,14 +1,6 @@
 from dataclasses import dataclass
 
-from mypy.nodes import (
-    AssignmentStmt,
-    Block,
-    CallExpr,
-    MemberExpr,
-    NameExpr,
-    StrExpr,
-    WithStmt,
-)
+from mypy.nodes import AssignmentStmt, Block, CallExpr, MemberExpr, NameExpr, StrExpr, WithStmt
 
 from refurb.error import Error
 
@@ -36,7 +28,7 @@ class ErrorInfo(Error):
 
     name = "use-pathlib-read-text-read-bytes"
     code = 101
-    categories = ["pathlib"]
+    categories = ("pathlib",)
 
 
 def check(node: WithStmt, errors: list[Error]) -> None:
@@ -54,9 +46,7 @@ def check(node: WithStmt, errors: list[Error]) -> None:
                 body=[
                     AssignmentStmt(
                         rvalue=CallExpr(
-                            callee=MemberExpr(
-                                expr=NameExpr(name=read_name), name="read"
-                            ),
+                            callee=MemberExpr(expr=NameExpr(name=read_name), name="read"),
                             args=[],
                         )
                     )
@@ -68,14 +58,14 @@ def check(node: WithStmt, errors: list[Error]) -> None:
             with_params = ""
 
             for i, name in enumerate(arg_names[1:], start=1):
-                if name in (None, "mode"):
+                if name in {None, "mode"}:
                     with_params = ", ..."
 
                     match args[i]:
                         case StrExpr(value=mode) if "b" in mode:
                             func = "read_bytes"
 
-                elif name in ("encoding", "errors"):
+                elif name in {"encoding", "errors"}:
                     read_text_params = "..."
                     with_params = ", ..."
 

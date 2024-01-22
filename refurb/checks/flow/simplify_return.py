@@ -1,14 +1,6 @@
 from dataclasses import dataclass
 
-from mypy.nodes import (
-    Block,
-    Expression,
-    FuncItem,
-    IfStmt,
-    MatchStmt,
-    ReturnStmt,
-    Statement,
-)
+from mypy.nodes import Block, Expression, FuncItem, IfStmt, MatchStmt, ReturnStmt, Statement
 from mypy.patterns import AsPattern
 
 from refurb.error import Error
@@ -58,7 +50,7 @@ class ErrorInfo(Error):
 
     name = "simplify-return"
     code = 126
-    categories = ["control-flow", "readability"]
+    categories = ("control-flow", "readability")
 
 
 def get_trailing_return(node: Statement) -> Statement | None:
@@ -72,9 +64,7 @@ def get_trailing_return(node: Statement) -> Statement | None:
         ) if all(isinstance(block.body[-1], ReturnStmt) for block in bodies):
             return get_trailing_return(stmt)
 
-        case IfStmt(
-            body=[Block(body=[*_, ReturnStmt()])], else_body=Block(body=[stmt])
-        ):
+        case IfStmt(body=[Block(body=[*_, ReturnStmt()])], else_body=Block(body=[stmt])):
             return get_trailing_return(stmt)
 
     return None

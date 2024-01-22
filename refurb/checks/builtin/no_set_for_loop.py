@@ -1,14 +1,6 @@
 from dataclasses import dataclass
 
-from mypy.nodes import (
-    Block,
-    CallExpr,
-    ExpressionStmt,
-    ForStmt,
-    MemberExpr,
-    NameExpr,
-    Var,
-)
+from mypy.nodes import Block, CallExpr, ExpressionStmt, ForStmt, MemberExpr, NameExpr, Var
 
 from refurb.checks.common import unmangle_name
 from refurb.error import Error
@@ -44,7 +36,7 @@ class ErrorInfo(Error):
 
     name = "no-set-for-loop"
     code = 142
-    categories = ["builtin"]
+    categories = ("builtin",)
 
 
 def check(node: ForStmt, errors: list[Error]) -> None:

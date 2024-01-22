@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from mypy.nodes import ArgKind, CallExpr, Decorator, NameExpr, RefExpr
+from mypy.nodes import ArgKind, CallExpr, Decorator, MemberExpr, NameExpr, RefExpr
 
 from refurb.error import Error
 from refurb.settings import Settings
@@ -36,22 +36,28 @@ class ErrorInfo(Error):
     name = "use-cache"
     code = 134
     msg: str = "Replace `@lru_cache(maxsize=None)` with `@cache`"
-    categories = ["functools", "python39", "readability"]
+    categories = ("functools", "python39", "readability")
 
 
 def check(node: Decorator, errors: list[Error], settings: Settings) -> None:
-    if settings.python_version < (3, 9):
+    if settings.get_python_version() < (3, 9):
         return  # pragma: no cover
 
     match node:
         case Decorator(
             decorators=[
                 CallExpr(
-                    callee=RefExpr(fullname="functools.lru_cache"),
+                    callee=RefExpr(fullname="functools.lru_cache") as ref,
                     arg_names=["maxsize"],
                     arg_kinds=[ArgKind.ARG_NAMED],
                     args=[NameExpr(fullname="builtins.None")],
                 )
             ]
         ):
-            errors.append(ErrorInfo.from_node(node))
+            prefix = "functools." if isinstance(ref, MemberExpr) else ""
+            old = f"@{prefix}lru_cache(maxsize=None)"
+            new = f"@{prefix}cache"
+
+            msg = f"Replace `{old}` with `{new}`"
+
+            errors.append(ErrorInfo.from_node(node, msg))

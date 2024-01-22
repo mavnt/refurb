@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "refurb"
-version = "1.15.0"
+version = "1.27.0"
 description = "A tool for refurbish and modernize Python codebases"
 authors = ["dosisod"]
 license = "GPL-3.0-only"
@@ -29,9 +29,11 @@ pytest = "^7.1.2"
 refurb = "refurb.__main__:main"
 
 [tool.isort]
+line_length = 99
 multi_line_output = 3
 include_trailing_comma = true
 color_output = true
+extend_skip = ["test/data"]
 
 [tool.mypy]
 allow_redefinition = true
@@ -50,18 +52,22 @@ allow_untyped_defs = true
 [tool.coverage.run]
 omit = [
   "refurb/__main__.py",
-  "refurb/gen.py"
+  "refurb/gen.py",
+  "refurb/visitor/traverser.py"
 ]
 
 [tool.coverage.report]
+exclude_lines = [
+  "pragma: no cover",
+  "if TYPE_CHECKING:",
+  "assert False",
+]
 skip_covered = true
 skip_empty = true
 
 [tool.black]
 exclude = "test/data/*"
-line-length = 79
-check = true
-diff = true
+line-length = 99
 color = true
 
 [tool.pytest.ini_options]
@@ -69,22 +75,56 @@ addopts = "--cov=refurb --cov-report=html --cov-report=term-missing --cov-fail-u
 testpaths = ["test"]
 
 [tool.ruff]
-line-length = 79
+line-length = 99
+preview = true
 
-extend-select = [
-  "W", "N", "UP", "YTT", "S", "BLE", "B",
-  "C4", "DTZ", "ISC", "PIE", "PT", "RET",
-  "SIM", "PTH", "PLE", "RUF", "FBT",
-]
+select = ["ALL"]
 
 # TODO: fix RUF100 not playing well with refurb
-extend-ignore = ["S101", "N813", "N818", "SIM102", "PT012", "RUF100", "F821", "B905", "FBT001"]
+extend-ignore = [
+  "A001", "A002", "A003",
+  "ANN101", "ANN102", "ANN401", "ARG001",
+  "B905",
+  "C901",
+  "COM812",
+  "D100", "D101", "D102", "D103", "D104", "D105", "D107", "D200", "D202", "D203",
+  "D205", "D212", "D214", "D400", "D401", "D404", "D405", "D406", "D407", "D412",
+  "D415", "D416",
+  "EM101", "EM102",
+  "F821",
+  "FBT001",
+  "FIX002", "FIX004",
+  "I001",
+  "INP001",
+  "N813", "N818",
+  "PGH003",
+  "PLR0911", "PLR0912", "PLR0914", "PLR0915", "PLR2004",
+  "PT012",
+  "RUF100",
+  "S101", "S404",
+  "SIM102", "SIM108",
+  "SLF001",
+  "T201",
+  "TD002", "TD003",
+  "TRY003", "TRY004",
+
+  # Consider this
+  "CPY001",
+
+  # False positive
+  "PLC2801",
+]
 
 extend-exclude = ["test/data*"]
 
+target-version = "py310"
+
 [tool.ruff.per-file-ignores]
-"test/*" = ["E501"]
+"test/*" = ["ANN201", "ARG001", "E501", "TCH001", "TCH002"]
+"refurb/*" = ["PT"]
 "refurb/main.py" = ["E501"]
+"refurb/visitor/traverser.py" = ["ALL"]
+"test/e2e/gbk.py" = ["FURB105"]
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

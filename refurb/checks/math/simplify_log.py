@@ -27,7 +27,7 @@ class ErrorInfo(Error):
 
     name = "simplify-math-log"
     code = 163
-    categories = ["math", "readability"]
+    categories = ("math", "readability")
 
 
 def check(node: CallExpr, errors: list[Error]) -> None:
@@ -48,8 +48,4 @@ def check(node: CallExpr, errors: list[Error]) -> None:
                 case _:
                     return
 
-            errors.append(
-                ErrorInfo.from_node(
-                    node, f"Replace `math.log(x, {base})` with `{new}`"
-                )
-            )
+            errors.append(ErrorInfo.from_node(node, f"Replace `math.log(x, {base})` with `{new}`"))

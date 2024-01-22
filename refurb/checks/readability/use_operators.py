@@ -5,13 +5,17 @@ from mypy.nodes import (
     Block,
     ComparisonExpr,
     FuncItem,
+    IndexExpr,
     LambdaExpr,
     NameExpr,
     OpExpr,
     ReturnStmt,
+    SliceExpr,
+    TupleExpr,
     UnaryExpr,
 )
 
+from refurb.checks.common import _stringify, slice_expr_to_slice_call, stringify
 from refurb.error import Error
 
 
@@ -41,11 +45,33 @@ class ErrorInfo(Error):
 
     print(reduce(add, nums))  # 6
     ```
+
+    In addition, the `operator.itemgetter()` function can be used to get one or
+    more items from an object, removing the need to create a lambda just to
+    extract values from an object:
+
+    Bad:
+
+    ```
+    row = (1, "Some text", True)
+
+    transform = lambda x: (x[2], x[0])
+    ```
+
+    Good:
+
+    ```
+    from operator import itemgetter
+
+    row = (1, "Some text", True)
+
+    transform = itemgetter(2, 0)
+    ```
     """
 
     name = "use-operator"
     code = 118
-    categories = ["operator"]
+    categories = ("operator",)
 
 
 BINARY_OPERATORS = {
@@ -82,7 +108,7 @@ UNARY_OPERATORS = {
 
 
 def check(node: FuncItem, errors: list[Error]) -> None:
-    func_type = "lambda" if isinstance(node, LambdaExpr) else "function"
+    func_type = get_function_type(node)
 
     match node:
         case FuncItem(
@@ -106,8 +132,12 @@ def check(node: FuncItem, errors: list[Error]) -> None:
                     )
                 ]
             ),
-        ) if lhs_name == expr_lhs and rhs_name == expr_rhs:
-            if func_name := BINARY_OPERATORS.get(op):
+        ) if func_name := BINARY_OPERATORS.get(op):
+            if func_name == "contains":
+                # operator.contains has reversed parameters
+                expr_lhs, expr_rhs = expr_rhs, expr_lhs
+
+            if lhs_name == expr_lhs and rhs_name == expr_rhs:
                 errors.append(
                     ErrorInfo.from_node(
                         node,
@@ -118,21 +148,65 @@ def check(node: FuncItem, errors: list[Error]) -> None:
         case FuncItem(
             arg_names=[name],
             arg_kinds=[ArgKind.ARG_POS],
-            body=Block(
-                body=[
-                    ReturnStmt(
-                        expr=UnaryExpr(
-                            op=op,
-                            expr=NameExpr(name=expr_name),
+            body=Block(body=[ReturnStmt(expr=expr)]),
+        ):
+            match expr:
+                case UnaryExpr(
+                    op=op,
+                    expr=NameExpr(name=expr_name),
+                ) if name == expr_name and (func_name := UNARY_OPERATORS.get(op)):
+                    errors.append(
+                        ErrorInfo.from_node(
+                            node,
+                            f"Replace {func_type} with `operator.{func_name}`",
                         )
                     )
-                ]
-            ),
-        ) if name == expr_name:
-            if func_name := UNARY_OPERATORS.get(op):
-                errors.append(
-                    ErrorInfo.from_node(
-                        node,
-                        f"Replace {func_type} with `operator.{func_name}`",
+
+                case IndexExpr(
+                    base=NameExpr(name=item_name),
+                    index=index,
+                ) if item_name == name:
+                    index_expr = (
+                        slice_expr_to_slice_call(index)
+                        if isinstance(index, SliceExpr)
+                        else stringify(index)
                     )
-                )
+
+                    msg = f"Replace {func_type} with `operator.itemgetter({index_expr})`"
+
+                    errors.append(ErrorInfo.from_node(node, msg))
+
+                case TupleExpr(items=items) if items:
+                    tuple_args: list[str] = []
+
+                    for item in items:
+                        match item:
+                            case IndexExpr(
+                                base=NameExpr(name=item_name),
+                                index=index,
+                            ) if item_name == name:
+                                tuple_args.append(
+                                    slice_expr_to_slice_call(index)
+                                    if isinstance(index, SliceExpr)
+                                    else stringify(index)
+                                )
+
+                            case _:
+                                return
+
+                    inner = ", ".join(tuple_args)
+
+                    msg = f"Replace {func_type} with `operator.itemgetter({inner})`"
+
+                    errors.append(ErrorInfo.from_node(node, msg))
+
+
+def get_function_type(node: FuncItem) -> str:
+    if isinstance(node, LambdaExpr):
+        try:
+            return f"`{_stringify(node)}`"
+
+        except ValueError:
+            return "lambda"
+
+    return "function"

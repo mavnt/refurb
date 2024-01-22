@@ -1,14 +1,8 @@
 from dataclasses import dataclass
 
-from mypy.nodes import (
-    CallExpr,
-    IndexExpr,
-    NameExpr,
-    OpExpr,
-    SliceExpr,
-    StrExpr,
-)
+from mypy.nodes import CallExpr, IndexExpr, NameExpr, OpExpr, SliceExpr, StrExpr
 
+from refurb.checks.common import stringify
 from refurb.error import Error
 
 from .util import is_pathlike
@@ -19,7 +13,7 @@ class ErrorInfo(Error):
     """
     A common operation is changing the extension of a file. If you have an
     existing `Path` object, you don't need to convert it to a string, slice
-    it, and append a new extension. Instead, use the `with_suffix()` function:
+    it, and append a new extension. Instead, use the `with_suffix()` method:
 
     Bad:
 
@@ -36,8 +30,7 @@ class ErrorInfo(Error):
 
     name = "use-pathlib-with-suffix"
     code = 100
-    msg: str = "Use `Path(x).with_suffix(y)` instead of slice and concat"  # noqa: E501
-    categories = ["pathlib"]
+    categories = ("pathlib",)
 
 
 def check(node: OpExpr, errors: list[Error]) -> None:
@@ -51,6 +44,11 @@ def check(node: OpExpr, errors: list[Error]) -> None:
                 ),
                 index=SliceExpr(begin_index=None),
             ),
-            right=StrExpr(),
+            right=StrExpr() as suffix,
         ) if is_pathlike(arg):
-            errors.append(ErrorInfo.from_node(arg))
+            old = stringify(node)
+            new = f"Path({stringify(arg)}).with_suffix({suffix})"
+
+            msg = f"Replace `{old}` with `{new}`"
+
+            errors.append(ErrorInfo.from_node(arg, msg))

@@ -38,7 +38,7 @@ class ErrorInfo(Error):
     ```
 
     Note that this check is disabled by default because `Path()` returns a Path
-    object, not a string, meaning that the Path object will propogate throught
+    object, not a string, meaning that the Path object will propagate through
     your code. This might be what you want, and might encourage you to use the
     pathlib module in more places, but since it is not a drop-in replacement it
     is disabled by default.
@@ -47,7 +47,7 @@ class ErrorInfo(Error):
     name = "no-path-join"
     enabled = False
     code = 147
-    categories = ["pathlib"]
+    categories = ("pathlib",)
 
 
 def check(node: CallExpr, errors: list[Error]) -> None:
@@ -60,9 +60,7 @@ def check(node: CallExpr, errors: list[Error]) -> None:
 
             for arg in reversed(args):
                 if isinstance(arg, StrExpr | BytesExpr) and arg.value == "..":
-                    trailing_dot_dot_args.append(
-                        '".."' if isinstance(arg, StrExpr) else 'b".."'
-                    )
+                    trailing_dot_dot_args.append('".."' if isinstance(arg, StrExpr) else 'b".."')
 
                 else:
                     break
@@ -83,7 +81,5 @@ def check(node: CallExpr, errors: list[Error]) -> None:
                 new = "Path(...)"
 
             errors.append(
-                ErrorInfo.from_node(
-                    node, f"Replace `os.path.join({join_args})` with `{new}`"
-                )
+                ErrorInfo.from_node(node, f"Replace `os.path.join({join_args})` with `{new}`")
             )

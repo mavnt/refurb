@@ -35,15 +35,13 @@ main.py:16:9 [FURB105]: Use `print() instead of `print("")`
 
 ## Installing
 
-Before installing, it is recommended that you setup a [virtual environment](https://docs.python.org/3/tutorial/venv.html).
-
 ```
-$ pip3 install refurb
+$ pipx install refurb
 $ refurb file.py folder/
 ```
 
-> Note: Refurb only supports Python 3.10. It can check Python 3.6 code and up, but Refurb
-> itself must be ran through Python 3.10.
+> **Note**
+> Refurb must be run on Python 3.10+, though it can check Python 3.7+ code by setting the `--python-version` flag.
 
 ### Docker
 
@@ -88,7 +86,7 @@ This flag can be repeated.
 
 You can also use inline comments to disable errors:
 
-```
+```python
 x = int(0)  # noqa: FURB123
 y = list()  # noqa
 ```
@@ -98,7 +96,7 @@ all errors on that line.
 
 You can also specify multiple errors to ignore by separating them with a comma/space:
 
-```
+```python
 x = not not int(0)  # noqa: FURB114, FURB123
 x = not not int(0)  # noqa: FURB114 FURB123
 ```
@@ -109,6 +107,8 @@ Certain checks are disabled by default, and need to be enabled first. You can do
 `--enable ERR` flag, where `ERR` is the error code of the check you want to enable. A disabled
 check differs from an ignored check in that a disabled check will never be loaded, whereas an
 ignored check will be loaded, an error will be emitted, and the error will be suppressed.
+
+Use the `--verbose`/`-v` flag to get a full list of enabled checks.
 
 The opposite of `--enable` is `--disable`, which will disable a check. When `--enable` and `--disable`
 are both specified via the command line, whichever one comes last will take precedence. When using
@@ -142,6 +142,9 @@ should allow for better detection of language features, and allow for better err
 for this flag must be in the form `x.y`, for example, `3.10`.
 
 The syntax for using this in the config file is `python_version = "3.10"`.
+
+When the Python version is unspecified, Refurb uses whatever version your local Python installation uses.
+For example, if your `python --version` is `3.11.5`, Refurb uses `3.11`, dropping the `5` patch version.
 
 ## Changing Output Formats
 
@@ -210,6 +213,8 @@ You can use the `--config-file` flag to tell Refurb to use a different config fi
 default `pyproject.toml` file. Note that it still must be in the same form as the normal
 `pyproject.toml` file.
 
+Click [here](./docs/configs/README.md) to see some example config files.
+
 ### Ignore Checks Per File/Folder
 
 If you have a large codebase you might want to ignore errors for certain files or folders,
@@ -257,7 +262,7 @@ let `pre-commit` find the most recent one for you).
 Installing plugins for Refurb is very easy:
 
 ```
-$ pip3 install refurb-plugin-example
+$ pip install refurb-plugin-example
 ```
 
 Where `refurb-plugin-example` is the name of the plugin. Refurb will automatically load
@@ -290,15 +295,45 @@ Then, to load your new check, use `refurb file.py --load your.path.here`
 > importing a normal python module. If `your.path.here` is a directory, all checks
 > in that directory will be loaded. If it is a file, only that file will be loaded.
 
-## Developing
+## Troubleshooting
 
-To setup locally, run:
+If Refurb is running slow, use the `--timing-stats` flag to diagnose why:
+
+```
+$ refurb file --timing-stats /tmp/stats.json
+```
+
+This will output a JSON file with the following information:
+
+* Total time Mypy took to parse the modules (a majority of the time usually).
+* Time Mypy spent parsing each module. Useful for finding very large/unused files.
+* Time Refurb spent checking each module. These numbers should be very small (less than 100ms).
+
+Larger files naturally take longer to check, but files that take way too long should be
+looked into, as an issue might only manifest themselves when a file reaches a certain size.
+
+## Disable Color
+
+Color output is enabled by default in Refurb. To disable it, do one of the following:
+
+* Set the `NO_COLOR` env var.
+
+* Use the `--no-color` flag.
+
+* Set `color = false` in the config file.
+
+* Pipe/redirect Refurb output to another program or file.
+
+## Developing / Contributing
+
+### Setup
+
+To setup locally run:
 
 ```
 $ git clone https://github.com/dosisod/refurb
 $ cd refurb
 $ make install
-$ make install-local
 ```
 
 Tests can be ran all at once using `make`, or you can run each tool on its own using
@@ -308,6 +343,28 @@ Unit tests can be ran with `pytest` or `make test`.
 
 > Since the end-to-end (e2e) tests are slow, they are not ran when running `make`.
 > You will need to run `make test-e2e` to run them.
+
+### Updating Documentation
+
+We encourage people to update the documentation when they see typos and other issues!
+
+With that in mind though, don't directly modify the `docs/checks.md` file. It is auto-generated
+and will be overridden when new checks are added. The documentation for checks can be updated
+by changing the docstrings of in the checks themselves. For example, to update `FURB100`,
+change the docstring of the `ErrorInfo` class in the `refurb/checks/pathlib/with_suffix.py` file.
+You can find the file for a given check by grep-ing for `code = XYZ`, where `XYZ` is the check
+you are looking for but with the `FURB` prefix removed.
+
+Use the `--verbose` flag with `--explain` to find the filename for a given check. For example:
+
+```
+$ refurb --explain FURB123 --verbose
+Filename: refurb/checks/readability/no_unnecessary_cast.py
+
+FURB123: no-redundant-cast [readability]
+
+...
+```
 
 ## Why Does This Exist?
 

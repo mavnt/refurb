@@ -24,7 +24,7 @@ class ErrorInfo(Error):
     Bad:
 
     ```
-    nums = set((123, 456))
+    nums = {123, 456}
 
     if 123 in nums:
         nums.remove(123)
@@ -33,7 +33,7 @@ class ErrorInfo(Error):
     Good:
 
     ```
-    nums = set((123, 456))
+    nums = {123, 456}
 
     nums.discard(123)
     ```
@@ -42,7 +42,7 @@ class ErrorInfo(Error):
     name = "use-set-discard"
     code = 132
     msg: str = "Replace `if x in s: s.remove(x)` with `s.discard(x)`"
-    categories = ["readability", "set"]
+    categories = ("readability", "set")
 
 
 def check(node: IfStmt, errors: list[Error]) -> None:

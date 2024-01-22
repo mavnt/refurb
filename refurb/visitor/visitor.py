@@ -2,11 +2,11 @@ from collections import defaultdict
 from collections.abc import Callable
 
 from mypy.nodes import CallExpr, Node
-from mypy.traverser import TraverserVisitor
 
 from refurb.error import Error
 from refurb.settings import Settings
 from refurb.types import Check, Checks
+from refurb.visitor import TraverserVisitor
 
 from .mapping import METHOD_NODE_MAPPINGS
 
@@ -15,10 +15,10 @@ VisitorMethod = Callable[["RefurbVisitor", Node], None]
 
 def build_visitor(name: str, ty: type[Node], checks: Checks) -> VisitorMethod:
     def inner(self: RefurbVisitor, o: Node) -> None:
-        getattr(TraverserVisitor, name)(self, o)
-
         for check in checks[ty]:
             self.run_check(o, check)
+
+        getattr(TraverserVisitor, name)(self, o)
 
     inner.__name__ = name
     inner.__annotations__["o"] = ty
@@ -31,9 +31,7 @@ class RefurbVisitor(TraverserVisitor):
 
     _dont_build = ("visit_call_expr",)
 
-    def __init__(
-        self, checks: defaultdict[type[Node], list[Check]], settings: Settings
-    ) -> None:
+    def __init__(self, checks: defaultdict[type[Node], list[Check]], settings: Settings) -> None:
         self.errors = []
         self.checks = checks
         self.settings = settings
@@ -47,13 +45,13 @@ class RefurbVisitor(TraverserVisitor):
                 setattr(self, name, func.__get__(self))
 
     def visit_call_expr(self, o: CallExpr) -> None:
-        for arg in o.args:
-            arg.accept(self)
-
-        o.callee.accept(self)
-
         for check in self.checks[CallExpr]:
             self.run_check(o, check)
+
+        for arg in o.args:
+            self.accept(arg)
+
+        self.accept(o.callee)
 
     def run_check(self, node: Node, check: Check) -> None:
         # Hack: use the type annotations to check if the function takes 2 or

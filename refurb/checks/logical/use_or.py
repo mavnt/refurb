@@ -2,15 +2,15 @@ from dataclasses import dataclass
 
 from mypy.nodes import ConditionalExpr
 
-from refurb.checks.common import is_equivalent
+from refurb.checks.common import is_equivalent, stringify
 from refurb.error import Error
 
 
 @dataclass
 class ErrorInfo(Error):
     """
-    Sometimes ternary (aka, inline if statements) can be simplified to a single
-    `or` expression.
+    Sometimes the ternary operator (aka, inline if statements) can be
+    simplified to a single `or` expression.
 
     Bad:
 
@@ -29,10 +29,17 @@ class ErrorInfo(Error):
 
     name = "use-or-oper"
     code = 110
-    msg: str = "Replace `x if x else y` with `x or y`"
-    categories = ["logical", "readability"]
+    categories = ("logical", "readability")
 
 
 def check(node: ConditionalExpr, errors: list[Error]) -> None:
     if is_equivalent(node.if_expr, node.cond):
-        errors.append(ErrorInfo.from_node(node))
+        if_true = stringify(node.if_expr)
+        if_false = stringify(node.else_expr)
+
+        old = f"{if_true} if {if_true} else {if_false}"
+        new = f"{if_true} or {if_false}"
+
+        msg = f"Replace `{old}` with `{new}`"
+
+        errors.append(ErrorInfo.from_node(node, msg))

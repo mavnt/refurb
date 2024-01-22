@@ -12,7 +12,7 @@ class ErrorInfo(Error):
     methods can be written more succinctly: `strip()` is the same thing as
     calling both `lstrip()` and `rstrip()` together, and all the strip
     functions take an iterable argument of the characters to strip, meaning
-    you don't need to call a strip function multiple times with different
+    you don't need to call strip methods multiple times with different
     arguments, you can just concatenate them and call it once.
 
     Bad:
@@ -34,7 +34,7 @@ class ErrorInfo(Error):
 
     name = "simplify-strip"
     code = 159
-    categories = ["readability", "string"]
+    categories = ("readability", "string")
 
 
 STRIP_FUNCS = ("lstrip", "rstrip", "strip")
@@ -97,8 +97,4 @@ def check(node: CallExpr, errors: list[Error]) -> None:
             rhs = f"{rhs_func}({rhs_arg})"
             new = f"x.{'.'.join(exprs)}"
 
-            errors.append(
-                ErrorInfo.from_node(
-                    node, f"Replace `x.{lhs}.{rhs}` with `{new}`"
-                )
-            )
+            errors.append(ErrorInfo.from_node(node, f"Replace `x.{lhs}.{rhs}` with `{new}`"))

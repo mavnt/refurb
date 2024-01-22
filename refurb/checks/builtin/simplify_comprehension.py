@@ -1,12 +1,6 @@
 from dataclasses import dataclass
 
-from mypy.nodes import (
-    CallExpr,
-    GeneratorExpr,
-    ListComprehension,
-    NameExpr,
-    SetComprehension,
-)
+from mypy.nodes import CallExpr, GeneratorExpr, ListComprehension, NameExpr, SetComprehension
 
 from refurb.error import Error
 
@@ -14,10 +8,10 @@ from refurb.error import Error
 @dataclass
 class ErrorInfo(Error):
     """
-    Often times generator and comprehension expressions can be written more
-    succinctly. For example, passing a list comprehension to a function when
-    a generator expression would suffice, or using the shorthand notation
-    in the case of `list` and `set`. For example:
+    Often times generator expressions and list/set/dict comprehensions can be
+    written more succinctly. For example, passing a list comprehension to a
+    function when a generator expression would suffice, or using the shorthand
+    notation in the case of `list` and `set`. For example:
 
     Bad:
 
@@ -43,7 +37,7 @@ class ErrorInfo(Error):
     name = "simplify-comprehension"
     enabled = False
     code = 137
-    categories = ["builtin", "iterable", "readability"]
+    categories = ("builtin", "iterable", "readability")
 
 
 FUNCTION_MAPPINGS = {
@@ -71,16 +65,9 @@ def check(node: CallExpr, errors: list[Error]) -> None:
     match node:
         case CallExpr(
             callee=NameExpr(name=name, fullname=fullname),
-            args=[
-                GeneratorExpr()
-                | ListComprehension()
-                | SetComprehension() as arg
-            ],
+            args=[GeneratorExpr() | ListComprehension() | SetComprehension() as arg],
         ) if fullname in FUNCTION_MAPPINGS:
-            if (
-                isinstance(arg, GeneratorExpr)
-                and name not in COMPREHENSION_SHORTHAND_TYPES
-            ):
+            if isinstance(arg, GeneratorExpr) and name not in COMPREHENSION_SHORTHAND_TYPES:
                 return
 
             if isinstance(arg, SetComprehension) and name not in SET_TYPES:
@@ -89,8 +76,4 @@ def check(node: CallExpr, errors: list[Error]) -> None:
             old = format_func_name(NODE_TYPE_TO_FUNC_NAME[type(arg)])
             new = format_func_name(fullname)
 
-            errors.append(
-                ErrorInfo.from_node(
-                    node, f"Replace `{name}({old})` with `{new}`"
-                )
-            )
+            errors.append(ErrorInfo.from_node(node, f"Replace `{name}({old})` with `{new}`"))

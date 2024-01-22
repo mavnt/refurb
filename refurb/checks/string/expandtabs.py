@@ -1,45 +1,37 @@
 from dataclasses import dataclass
 
-from mypy.nodes import (
-    BytesExpr,
-    CallExpr,
-    IntExpr,
-    MemberExpr,
-    NameExpr,
-    OpExpr,
-    StrExpr,
-)
+from mypy.nodes import BytesExpr, CallExpr, IntExpr, MemberExpr, NameExpr, OpExpr, StrExpr
 
 from refurb.error import Error
 
 
 @dataclass
 class ErrorInfo(Error):
-    """
+    r"""
     If you want to expand the tabs at the start of a string, don't use
-    `.replace("\\t", " " * 8)`, use `.expandtabs()` instead. Note that this
+    `.replace("\t", " " * 8)`, use `.expandtabs()` instead. Note that this
     only works if the tabs are at the start of the string, since `expandtabs()`
     will expand each tab to the nearest tab column.
 
     Bad:
 
     ```
-    spaces_8 = "\\thello world".replace("\\t", " " * 8)
-    spaces_4 = "\\thello world".replace("\\t", "    ")
+    spaces_8 = "\thello world".replace("\t", " " * 8)
+    spaces_4 = "\thello world".replace("\t", "    ")
     ```
 
     Good:
 
     ```
-    spaces_8 = "\\thello world".expandtabs()
-    spaces_4 = "\\thello world".expandtabs(4)
+    spaces_8 = "\thello world".expandtabs()
+    spaces_4 = "\thello world".expandtabs(4)
     ```
     """
 
     name = "use-expandtabs"
     enabled = False
     code = 106
-    categories = ["string"]
+    categories = ("string",)
 
 
 def check_str(node: CallExpr, errors: list[Error]) -> None:

@@ -62,7 +62,7 @@ class ErrorInfo(Error):
     name = "no-redundant-continue"
     code = 133
     msg: str = "Continue is redundant here"
-    categories = ["control-flow", "readability"]
+    categories = ("control-flow", "readability")
 
 
 def get_trailing_continue(node: Statement) -> Generator[Statement, None, None]:
@@ -81,10 +81,7 @@ def get_trailing_continue(node: Statement) -> Generator[Statement, None, None]:
 
                 yield from get_trailing_continue(body.body[-1])
 
-        case (
-            IfStmt(else_body=Block(body=[*_, stmt]))
-            | WithStmt(body=Block(body=[*_, stmt]))
-        ):
+        case (IfStmt(else_body=Block(body=[*_, stmt])) | WithStmt(body=Block(body=[*_, stmt]))):
             yield from get_trailing_continue(stmt)
 
     return None
@@ -92,12 +89,8 @@ def get_trailing_continue(node: Statement) -> Generator[Statement, None, None]:
 
 def check(node: ForStmt | WhileStmt, errors: list[Error]) -> None:
     match node:
-        case (
-            ForStmt(body=Block(body=[*prev, stmt]))
-            | WhileStmt(body=Block(body=[*prev, stmt]))
-        ):
+        case (ForStmt(body=Block(body=[*prev, stmt])) | WhileStmt(body=Block(body=[*prev, stmt]))):
             if not prev and isinstance(stmt, ContinueStmt):
                 return
 
-            for continue_node in get_trailing_continue(stmt):
-                errors.append(ErrorInfo.from_node(continue_node))
+            errors.extend(ErrorInfo.from_node(x) for x in get_trailing_continue(stmt))

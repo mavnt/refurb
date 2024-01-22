@@ -2,36 +2,43 @@ from collections.abc import Callable
 from itertools import chain, combinations, starmap
 
 from mypy.nodes import (
+    ArgKind,
+    AssignmentStmt,
     Block,
+    BytesExpr,
     CallExpr,
     ComparisonExpr,
+    ComplexExpr,
     DictExpr,
     DictionaryComprehension,
     Expression,
+    FloatExpr,
     ForStmt,
     GeneratorExpr,
     IndexExpr,
+    IntExpr,
+    LambdaExpr,
     ListExpr,
     MemberExpr,
     MypyFile,
     NameExpr,
     Node,
     OpExpr,
+    ReturnStmt,
     SetExpr,
     SliceExpr,
     StarExpr,
     Statement,
+    StrExpr,
     TupleExpr,
     UnaryExpr,
 )
-from mypy.traverser import TraverserVisitor
 
 from refurb.error import Error
+from refurb.visitor import TraverserVisitor
 
 
-def extract_binary_oper(
-    oper: str, node: OpExpr
-) -> tuple[Expression, Expression] | None:
+def extract_binary_oper(oper: str, node: OpExpr) -> tuple[Expression, Expression] | None:
     match node:
         case OpExpr(
             op=op,
@@ -71,7 +78,7 @@ def check_for_loop_like(
 ) -> None:
     match node:
         case ForStmt(index=index, expr=expr):
-            func(index, expr, [], errors)
+            func(index, expr, [node.body], errors)
 
         case GeneratorExpr(
             indices=[index],
@@ -99,7 +106,7 @@ def check_for_loop_like(
 
 
 def unmangle_name(name: str | None) -> str:
-    return (name or "").replace("'", "")
+    return (name or "").rstrip("'*")
 
 
 def is_equivalent(lhs: Node | None, rhs: Node | None) -> bool:
@@ -118,9 +125,7 @@ def is_equivalent(lhs: Node | None, rhs: Node | None) -> bool:
             )
 
         case IndexExpr() as lhs, IndexExpr() as rhs:
-            return is_equivalent(lhs.base, rhs.base) and is_equivalent(
-                lhs.index, rhs.index
-            )
+            return is_equivalent(lhs.base, rhs.base) and is_equivalent(lhs.index, rhs.index)
 
         case CallExpr() as lhs, CallExpr() as rhs:
             return (
@@ -136,15 +141,12 @@ def is_equivalent(lhs: Node | None, rhs: Node | None) -> bool:
             | (SetExpr() as lhs, SetExpr() as rhs)
         ):
             return len(lhs.items) == len(rhs.items) and all(  # type: ignore
-                starmap(
-                    is_equivalent, zip(lhs.items, rhs.items)  # type: ignore
-                )
+                starmap(is_equivalent, zip(lhs.items, rhs.items))  # type: ignore
             )
 
         case DictExpr() as lhs, DictExpr() as rhs:
             return len(lhs.items) == len(rhs.items) and all(
-                is_equivalent(lhs_item[0], rhs_item[0])
-                and is_equivalent(lhs_item[1], rhs_item[1])
+                is_equivalent(lhs_item[0], rhs_item[0]) and is_equivalent(lhs_item[1], rhs_item[1])
                 for lhs_item, rhs_item in zip(lhs.items, rhs.items)
             )
 
@@ -209,8 +211,7 @@ def get_common_expr_in_comparison_chain(
             ComparisonExpr(operators=[lhs_oper], operands=[a, b]),
             ComparisonExpr(operators=[rhs_oper], operands=[c, d]),
         ) if (
-            lhs_oper == rhs_oper == cmp_oper
-            and (indices := get_common_expr_positions(a, b, c, d))
+            lhs_oper == rhs_oper == cmp_oper and (indices := get_common_expr_positions(a, b, c, d))
         ):
             return a, indices
 
@@ -234,17 +235,10 @@ class ReadCountVisitor(TraverserVisitor):
         return self.read_count > 0
 
 
-def is_placeholder(name: NameExpr) -> bool:
-    return unmangle_name(name.name) == "_"
-
-
 def is_name_unused_in_contexts(name: NameExpr, contexts: list[Node]) -> bool:
-    if not contexts:
-        return False
-
     for ctx in contexts:
         visitor = ReadCountVisitor(name)
-        ctx.accept(visitor)
+        visitor.accept(ctx)
 
         if visitor.was_read:
             return False
@@ -281,3 +275,153 @@ def is_type_none_call(node: Expression) -> bool:
             return True
 
     return False
+
+
+def stringify(node: Node) -> str:
+    try:
+        return _stringify(node)
+
+    except ValueError:  # pragma: no cover
+        return "x"
+
+
+def _stringify(node: Node) -> str:
+    match node:
+        case MemberExpr(expr=expr, name=name):
+            return f"{_stringify(expr)}.{name}"
+
+        case NameExpr(name=name):
+            return unmangle_name(name)
+
+        case BytesExpr(value=value):
+            # TODO: use same formatting as source line
+            value = value.replace('"', r"\"")
+
+            return f'b"{value}"'
+
+        case IntExpr(value=value):
+            # TODO: use same formatting as source line
+            return str(value)
+
+        case ComplexExpr(value=value):
+            # TODO: use same formatting as source line
+            return str(value)
+
+        case FloatExpr(value=value):
+            return str(value)
+
+        case StrExpr(value=value):
+            value = value.replace('"', r"\"")
+
+            return f'"{value}"'
+
+        case DictExpr(items=items):
+            parts: list[str] = []
+
+            for k, v in items:
+                if k:
+                    parts.append(f"{stringify(k)}: {stringify(v)}")
+
+                else:
+                    parts.append(f"**{stringify(v)}")
+
+            return f"{{{', '.join(parts)}}}"
+
+        case TupleExpr(items=items):
+            inner = ", ".join(stringify(x) for x in items)
+
+            if len(items) == 1:
+                # single element tuples need a trailing comma
+                inner += ","
+
+            return f"({inner})"
+
+        case CallExpr(arg_names=arg_names, arg_kinds=arg_kinds, args=args):
+            call_args: list[str] = []
+
+            for arg_name, kind, arg in zip(arg_names, arg_kinds, args):
+                if kind == ArgKind.ARG_NAMED:
+                    call_args.append(f"{arg_name}={_stringify(arg)}")
+
+                elif kind == ArgKind.ARG_STAR:
+                    call_args.append(f"*{_stringify(arg)}")
+
+                elif kind == ArgKind.ARG_STAR2:
+                    call_args.append(f"**{_stringify(arg)}")
+
+                else:
+                    call_args.append(_stringify(arg))
+
+            return f"{_stringify(node.callee)}({', '.join(call_args)})"
+
+        case IndexExpr(base=base, index=index):
+            return f"{stringify(base)}[{stringify(index)}]"
+
+        case SliceExpr(begin_index=begin_index, end_index=end_index, stride=stride):
+            begin = stringify(begin_index) if begin_index else ""
+            end = stringify(end_index) if end_index else ""
+            stride = f":{stringify(stride)}" if stride else ""  # type: ignore[assignment]
+
+            return f"{begin}:{end}{stride}"
+
+        case OpExpr(left=left, op=op, right=right):
+            return f"{_stringify(left)} {op} {_stringify(right)}"
+
+        case ComparisonExpr():
+            parts = []
+
+            for op, operand in zip(node.operators, node.operands):
+                parts.extend((_stringify(operand), op))
+
+            parts.append(_stringify(node.operands[-1]))
+
+            return " ".join(parts)
+
+        case UnaryExpr(op=op, expr=expr):
+            if op not in "+-~":
+                op += " "
+
+            return f"{op}{_stringify(expr)}"
+
+        case LambdaExpr(
+            arg_names=arg_names,
+            arg_kinds=arg_kinds,
+            body=Block(body=[ReturnStmt(expr=Expression() as expr)]),
+        ) if (all(kind == ArgKind.ARG_POS for kind in arg_kinds) and all(arg_names)):
+            if arg_names:
+                args = " "  # type: ignore
+                args += ", ".join(arg_names)  # type: ignore
+            else:
+                args = ""  # type: ignore
+
+            body = _stringify(expr)
+
+            return f"lambda{args}: {body}"
+
+        case ListExpr(items=items):
+            inner = ", ".join(stringify(x) for x in items)
+
+            return f"[{inner}]"
+
+        case SetExpr(items=items):
+            inner = ", ".join(stringify(x) for x in items)
+
+            return f"{{{inner}}}"
+
+        # TODO: support multiple lvalues
+        case AssignmentStmt(lvalues=[lhs], rvalue=rhs):
+            return f"{stringify(lhs)} = {stringify(rhs)}"
+
+    raise ValueError
+
+
+def slice_expr_to_slice_call(expr: SliceExpr) -> str:
+    args = [
+        stringify(expr.begin_index) if expr.begin_index else "None",
+        stringify(expr.end_index) if expr.end_index else "None",
+    ]
+
+    if expr.stride:
+        args.append(stringify(expr.stride))
+
+    return f"slice({', '.join(args)})"

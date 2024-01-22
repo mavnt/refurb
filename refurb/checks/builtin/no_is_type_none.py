@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 from mypy.nodes import CallExpr, ComparisonExpr, NameExpr
 
-from refurb.checks.common import is_type_none_call
+from refurb.checks.common import is_type_none_call, stringify
 from refurb.error import Error
 
 
@@ -33,7 +33,7 @@ class ErrorInfo(Error):
 
     name = "no-is-type-none"
     code = 169
-    categories = ["pythonic", "readability"]
+    categories = ("pythonic", "readability")
 
 
 def check(node: ComparisonExpr, errors: list[Error]) -> None:
@@ -41,12 +41,14 @@ def check(node: ComparisonExpr, errors: list[Error]) -> None:
         case ComparisonExpr(
             operators=["is" | "is not" | "==" | "!=" as oper],
             operands=[
-                CallExpr(callee=NameExpr(fullname="builtins.type")),
+                CallExpr(callee=NameExpr(fullname="builtins.type"), args=[arg]),
                 rhs,
             ],
         ) if is_type_none_call(rhs):
-            new = "is" if oper in ("is", "==") else "is not"
+            new = "is" if oper in {"is", "=="} else "is not"
 
-            msg = f"Replace `type(x) {oper} type(None)` with `x {new} None`"
+            expr = stringify(arg)
+
+            msg = f"Replace `type({expr}) {oper} type(None)` with `{expr} {new} None`"
 
             errors.append(ErrorInfo.from_node(node, msg))

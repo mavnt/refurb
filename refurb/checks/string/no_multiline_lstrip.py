@@ -7,9 +7,9 @@ from refurb.error import Error
 
 @dataclass
 class ErrorInfo(Error):
-    '''
+    r'''
     If you want to define a multi-line string but don't want a leading/trailing
-    newline, use a continuation character ('\\') instead of calling `lstrip()`,
+    newline, use a continuation character ('\') instead of calling `lstrip()`,
     `rstrip()`, or `strip()`.
 
     Bad:
@@ -27,19 +27,19 @@ class ErrorInfo(Error):
     Good:
 
     ```
-    """\\
+    """\
     This is some docstring
     """
 
-    """\\
-    This is another docstring\\
+    """\
+    This is another docstring\
     """
     ```
     '''
 
     name = "no-multiline-strip"
     code = 139
-    categories = ["readability"]
+    categories = ("readability",)
 
 
 def check(node: CallExpr, errors: list[Error]) -> None:
@@ -80,8 +80,4 @@ def check(node: CallExpr, errors: list[Error]) -> None:
             old = "".join(parts)
             new = old.replace("n", "")
 
-            errors.append(
-                ErrorInfo.from_node(
-                    node, f"Replace `{old}.{func_expr}` with `{new}`"
-                )
-            )
+            errors.append(ErrorInfo.from_node(node, f"Replace `{old}.{func_expr}` with `{new}`"))

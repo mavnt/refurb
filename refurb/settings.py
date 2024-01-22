@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import os
 import re
 import sys
-from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any, Literal, TypeVar
+from typing import TYPE_CHECKING, Any, Literal, TypeVar
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterator
 
 if sys.version_info >= (3, 11):
     import tomllib  # pragma: no cover
@@ -35,16 +38,22 @@ class Settings:
     enable_all: bool = False
     disable_all: bool = False
     config_file: str | None = None
-    python_version: tuple[int, int] = get_python_version()
+    python_version: tuple[int, int] | None = None
     mypy_args: list[str] = field(default_factory=list)
-    format: Literal["text", "github"] = "text"
-    sort_by: Literal["filename", "error"] = "filename"
+    format: Literal["text", "github"] | None = None
+    sort_by: Literal["filename", "error"] | None = None
+    verbose: bool = False
+    timing_stats: Path | None = None
+    color: bool = True
 
     def __post_init__(self) -> None:
         if self.enable_all and self.disable_all:
             raise ValueError(
                 'refurb: "enable all" and "disable all" can\'t be used at the same time'  # noqa: E501
             )
+
+        if os.getenv("NO_COLOR") or not sys.stdout.isatty():
+            self.color = False
 
     @staticmethod
     def merge(old: Settings, new: Settings) -> Settings:
@@ -75,11 +84,17 @@ class Settings:
             enable_all=old.enable_all or new.enable_all,
             quiet=old.quiet or new.quiet,
             config_file=old.config_file or new.config_file,
-            python_version=new.python_version,
+            python_version=new.python_version or old.python_version,
             mypy_args=new.mypy_args or old.mypy_args,
-            format=new.format,
-            sort_by=new.sort_by,
+            format=new.format or old.format,
+            sort_by=new.sort_by or old.sort_by,
+            verbose=old.verbose or new.verbose,
+            timing_stats=old.timing_stats or new.timing_stats,
+            color=old.color and new.color,
         )
+
+    def get_python_version(self) -> tuple[int, int]:
+        return self.python_version or get_python_version()
 
 
 ERROR_ID_REGEX = re.compile("^([A-Z]{3,4})?(\\d{3})$")
@@ -112,14 +127,14 @@ def parse_python_version(version: str) -> tuple[int, int]:
 
 
 def validate_format(format: str) -> Literal["github", "text"]:
-    if format in ("github", "text"):
+    if format in {"github", "text"}:
         return format  # type: ignore
 
     raise ValueError(f'refurb: "{format}" is not a valid format')
 
 
 def validate_sort_by(sort_by: str) -> Literal["filename", "error"]:
-    if sort_by in ("filename", "error"):
+    if sort_by in {"filename", "error"}:
         return sort_by  # type: ignore
 
     raise ValueError(f'refurb: cannot sort by "{sort_by}"')
@@ -131,42 +146,28 @@ def parse_amend_error(err: str, path: Path) -> ErrorClassifier:
     return replace(classifier, path=path)
 
 
-def parse_amendment(  # type: ignore
-    amendment: dict[str, Any]
-) -> set[ErrorClassifier]:
+def parse_amendment(amendment: dict[str, Any]) -> set[ErrorClassifier]:  # type: ignore
     match amendment:
         case {"path": str(path), "ignore": list(ignored), **extra}:
             if extra:
-                raise ValueError(
-                    'refurb: only "path" and "ignore" fields are supported'
-                )
+                raise ValueError('refurb: only "path" and "ignore" fields are supported')
 
-            return {
-                parse_amend_error(str(error), Path(path)) for error in ignored
-            }
+            return {parse_amend_error(str(error), Path(path)) for error in ignored}
 
-    raise ValueError(
-        'refurb: "path" or "ignore" fields are missing or malformed'
-    )
+    raise ValueError('refurb: "path" or "ignore" fields are missing or malformed')
 
 
 T = TypeVar("T")
 
 
-def pop_type(  # type: ignore[misc]
-    ty: type[T], type_name: str = ""
-) -> Callable[..., T]:
-    def inner(  # type: ignore[misc]
-        config: dict[str, Any], name: str, *, default: T | None = None
-    ) -> T:
+def pop_type(ty: type[T], type_name: str = "") -> Callable[..., T]:  # type: ignore[misc]
+    def inner(config: dict[str, Any], name: str, *, default: T | None = None) -> T:  # type: ignore[misc]
         x = config.pop(name, default or ty())
 
         if isinstance(x, ty):
             return x
 
-        raise ValueError(
-            f'refurb: "{name}" must be a {type_name or ty.__name__}'
-        )
+        raise ValueError(f'refurb: "{name}" must be a {type_name or ty.__name__}')
 
     return inner
 
@@ -193,6 +194,7 @@ def parse_config_file(contents: str) -> Settings:
     settings.quiet = pop_bool(config, "quiet")
     settings.disable_all = pop_bool(config, "disable_all")
     settings.enable_all = pop_bool(config, "enable_all")
+    settings.color = pop_bool(config, "color", default=True)
 
     enable = pop_list(config, "enable")
     disable = pop_list(config, "disable")
@@ -206,18 +208,16 @@ def parse_config_file(contents: str) -> Settings:
     mypy_args = pop_list(config, "mypy_args")
     settings.mypy_args = [str(x) for x in mypy_args]
 
-    version = pop_str(config, "python_version")
-    settings.python_version = (
-        parse_python_version(version) if version else get_python_version()
-    )
+    if "python_version" in config:
+        version = pop_str(config, "python_version")
 
-    settings.format = validate_format(
-        pop_str(config, "format", default="text")
-    )
+        settings.python_version = parse_python_version(version)
 
-    settings.sort_by = validate_sort_by(
-        pop_str(config, "sort_by", default="filename")
-    )
+    if "format" in config:
+        settings.format = validate_format(pop_str(config, "format"))
+
+    if "sort_by" in config:
+        settings.sort_by = validate_sort_by(pop_str(config, "sort_by"))
 
     amendments: list[dict[str, Any]] = config.pop("amend", [])  # type: ignore
 
@@ -228,21 +228,16 @@ def parse_config_file(contents: str) -> Settings:
         settings.ignore.update(parse_amendment(amendment))
 
     if config:
-        raise ValueError(
-            f"refurb: unknown field(s): {', '.join(config.keys())}"
-        )
+        raise ValueError(f"refurb: unknown field(s): {', '.join(config.keys())}")
 
     return settings
 
 
 def parse_command_line_args(args: list[str]) -> Settings:
-    if not args or args[0] in ("--help", "-h"):
+    if not args:
         return Settings(help=True)
 
-    if args[0] in ("--version", "-v"):
-        return Settings(version=True)
-
-    if args[0] == "gen":
+    if len(args) == 1 and args[0] == "gen":
         return Settings(generate=True)
 
     iargs = iter(args)
@@ -258,6 +253,12 @@ def parse_command_line_args(args: list[str]) -> Settings:
     for arg in iargs:
         if arg == "--debug":
             settings.debug = True
+
+        elif arg in {"--help", "-h"}:
+            settings.help = True
+
+        elif arg == "--version":
+            settings.version = True
 
         elif arg == "--quiet":
             settings.quiet = True
@@ -313,14 +314,31 @@ def parse_command_line_args(args: list[str]) -> Settings:
         elif arg == "--sort":
             settings.sort_by = validate_sort_by(get_next_arg(arg, iargs))
 
+        elif arg in {"--verbose", "-v"}:
+            settings.verbose = True
+
+        elif arg == "--timing-stats":
+            settings.timing_stats = Path(get_next_arg(arg, iargs))
+
+        elif arg == "--no-color":
+            settings.color = False
+
         elif arg == "--":
             settings.mypy_args = list(iargs)
 
         elif arg.startswith("-"):
             raise ValueError(f'refurb: unsupported option "{arg}"')
 
-        else:
+        elif arg:
             settings.files.append(arg)
+
+        else:
+            raise ValueError("refurb: argument cannot be empty")
+
+    if len(args) > 1 and (settings.help or settings.version):
+        msg = f"refurb: unexpected value before/after `{args[0]}`"
+
+        raise ValueError(msg)
 
     return settings
 
@@ -330,8 +348,16 @@ def load_settings(args: list[str]) -> Settings:
 
     file = Path(cli_args.config_file or "pyproject.toml")
 
-    config_file = (
-        parse_config_file(file.read_text()) if file.exists() else Settings()
-    )
+    try:
+        config_file = parse_config_file(file.read_text())
+
+    except IsADirectoryError as ex:
+        raise ValueError(f'refurb: "{file}" is a directory') from ex
+
+    except FileNotFoundError as ex:
+        if cli_args.config_file:
+            raise ValueError(f'refurb: "{file}" was not found') from ex
+
+        config_file = Settings()  # pragma: no cover
 
     return Settings.merge(config_file, cli_args)
