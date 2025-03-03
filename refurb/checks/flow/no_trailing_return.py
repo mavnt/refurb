@@ -68,10 +68,8 @@ def get_trailing_return(node: Statement) -> Generator[Statement, None, None]:
 
                 yield from get_trailing_return(body.body[-1])
 
-        case (IfStmt(else_body=Block(body=[*_, stmt])) | WithStmt(body=Block(body=[*_, stmt]))):
+        case IfStmt(else_body=Block(body=[*_, stmt])) | WithStmt(body=Block(body=[*_, stmt])):
             yield from get_trailing_return(stmt)
-
-    return None
 
 
 def check(node: FuncItem, errors: list[Error]) -> None:

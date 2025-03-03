@@ -583,13 +583,6 @@ with open("file") as f:
     f.writelines(lines)
 ```
 
-Note: If you have a more complex expression then just `lines`, you may
-need to use a list comprehension instead. For example:
-
-```python
-f.writelines(f"{line}\n" for line in lines)
-```
-
 ## FURB123: `no-redundant-cast`
 
 Categories: `readability`
@@ -833,32 +826,30 @@ if "key" in d:
     ...
 ```
 
-## FURB131: `no-del`
+## FURB131: `use-clear`
 
 Categories: `builtin` `readability`
 
-The `del` statement is commonly used for popping single elements from dicts
-and lists, though a slice can be used to remove a range of elements
-instead. When removing all elements via a slice, use the faster and more
-succinct `.clear()` method instead.
+Slice expressions can be used to replace part a list without reassigning
+it. If you want to clear all the elements out of a list while maintaining
+the same reference, don't use `del x[:]` or `x[:] = []`, use the faster
+`x.clear()` method instead.
 
 Bad:
 
 ```python
-names = {"key": "value"}
 nums = [1, 2, 3]
 
-del names[:]
 del nums[:]
+# or
+nums[:] = []
 ```
 
 Good:
 
 ```python
-names = {"key": "value"}
 nums = [1, 2, 3]
 
-names.clear()
 nums.clear()
 ```
 
@@ -1874,7 +1865,7 @@ if x is None:
 
 ## FURB170: `use-regex-pattern-methods`
 
-Categories: `readability` `regex`
+Categories: `performance` `readability` `regex`
 
 If you are passing a compiled regular expression to a regex function,
 consider calling the regex method on the pattern itself: It is faster, and
@@ -2330,9 +2321,9 @@ Bad:
 ```python
 names = ["Bob", "Alice", "Charlie"]
 
-names = reverse(names)
+names = reversed(names)
 # or
-names = list(reverse(names))
+names = list(reversed(names))
 # or
 names = names[::-1]
 ```
@@ -2343,4 +2334,130 @@ Good:
 names = ["Bob", "Alice", "Charlie"]
 
 names.reverse()
+```
+
+## FURB188: `remove-prefix-or-suffix`
+
+Categories: `performance` `readability` `string`
+
+Don't explicitly check a string prefix/suffix if you're only going to
+remove it, use `.removeprefix()` or `.removesuffix()` instead.
+
+Bad:
+
+```python
+def strip_txt_extension(filename: str) -> str:
+    return filename[:-4] if filename.endswith(".txt") else filename
+```
+
+Good:
+
+```python
+def strip_txt_extension(filename: str) -> str:
+    return filename.removesuffix(".txt")
+```
+
+## FURB189: `no-subclass-builtin`
+
+Categories: `collections`
+
+Subclassing `dict`, `list`, or `str` objects can be error prone, use the
+`UserDict`, `UserList`, and `UserStr` objects from the `collections` module
+instead.
+
+Bad:
+
+```python
+class CaseInsensitiveDict(dict):
+    ...
+```
+
+Good:
+
+```python
+from collections import UserDict
+
+class CaseInsensitiveDict(UserDict):
+    ...
+```
+
+Note: `isinstance()` checks for `dict`, `list`, and `str` types will fail
+when using the corresponding User class. If you need to pass custom `dict`
+or `list` objects to code you don't control, ignore this check. If you do
+control the code, consider using the following type checks instead:
+
+* `dict` -> `collections.abc.MutableMapping`
+* `list` -> `collections.abc.MutableSequence`
+* `str` -> No such conversion exists
+
+## FURB190: `use-str-method`
+
+Categories: `performance` `readability`
+
+Don't use a lambda function to call a no-arg method on a string, use the
+name of the string method directly. It is faster, and often times improves
+readability.
+
+Bad:
+
+```python
+def normalize_phone_number(phone_number: str) -> int:
+    digits = filter(lambda x: x.isdigit(), phone_number)
+
+    return int("".join(digits))
+```
+
+Good:
+
+```python
+def normalize_phone_number(phone_number: str) -> int:
+    digits = filter(str.isdigit, phone_number)
+
+    return int("".join(digits))
+```
+
+## FURB191: `use-isinstance-bool`
+
+Categories: `readability`
+
+Don't check if a value is `True` or `False` using `in`, use an
+`isinstance()` call.
+
+Bad:
+
+```python
+if value in {True, False}:
+    pass
+```
+
+Good:
+
+```python
+if isinstance(value, bool):
+    pass
+```
+
+## FURB192: `no-sorted-min-max`
+
+Categories: `builtin` `performance` `readability`
+
+Don't use `sorted()` to get the min/max value out of an iterable element,
+use `min()` or `max()`.
+
+Bad:
+
+```python
+nums = [3, 1, 4, 1, 5]
+
+lowest = sorted(nums)[0]
+highest = sorted(nums)[-1]
+```
+
+Good:
+
+```python
+nums = [3, 1, 4, 1, 5]
+
+lowest = min(nums)
+highest = max(nums)
 ```

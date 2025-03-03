@@ -14,6 +14,7 @@ from mypy.build import build
 from mypy.errors import CompileError
 from mypy.main import process_options
 
+from . import types
 from .error import Error, ErrorCode
 from .explain import explain
 from .gen import main as generate
@@ -100,8 +101,11 @@ def is_ignored_via_amend(error: Error, settings: Settings) -> bool:
     assert error.filename
 
     path = Path(error.filename).resolve()
-    error_code = ErrorCode.from_error(type(error))
+    error_code = str(ErrorCode.from_error(type(error)))
     config_root = Path(settings.config_file).parent if settings.config_file else Path()
+
+    errors_to_ignore = set[str]()
+    categories_to_ignore = set[str]()
 
     for ignore in settings.ignore:
         if ignore.path:
@@ -109,11 +113,13 @@ def is_ignored_via_amend(error: Error, settings: Settings) -> bool:
 
             if path.is_relative_to(ignore_path):
                 if isinstance(ignore, ErrorCode):
-                    return str(ignore) == str(error_code)
+                    errors_to_ignore.add(str(ignore))
+                else:
+                    categories_to_ignore.add(ignore.value)
 
-                return ignore.value in error.categories
-
-    return False
+    return error_code in errors_to_ignore or bool(
+        categories_to_ignore.intersection(error.categories)
+    )
 
 
 def should_ignore_error(error: Error | str, settings: Settings) -> bool:
@@ -176,6 +182,14 @@ def run_refurb(settings: Settings) -> Sequence[Error | str]:
     checks = load_checks(settings)
 
     refurb_timing_stats_in_ms: dict[str, int] = {}
+
+    builtins_file = result.graph["builtins"].tree
+    assert builtins_file
+
+    # Store the builtins module AST node as a global variable so we can access it later to create
+    # certain type nodes. This isn't the most elegant solution, but is more lightweight compared to
+    # creating a new type checker instance.
+    types.BUILTINS_MYPY_FILE = builtins_file
 
     for file in files:
         tree = result.graph[file.module].tree

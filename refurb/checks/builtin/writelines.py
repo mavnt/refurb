@@ -3,14 +3,15 @@ from dataclasses import dataclass
 from mypy.nodes import (
     Block,
     CallExpr,
+    Expression,
     ExpressionStmt,
     ForStmt,
     MemberExpr,
     NameExpr,
-    Var,
     WithStmt,
 )
 
+from refurb.checks.common import get_mypy_type, is_equivalent, is_subclass, stringify
 from refurb.error import Error
 
 
@@ -38,43 +39,52 @@ class ErrorInfo(Error):
     with open("file") as f:
         f.writelines(lines)
     ```
-
-    Note: If you have a more complex expression then just `lines`, you may
-    need to use a list comprehension instead. For example:
-
-    ```
-    f.writelines(f"{line}\n" for line in lines)
-    ```
     """
 
     name = "use-writelines"
     code = 122
-    msg: str = "Replace `for line in lines: f.write(line)` with `f.writelines(lines)`"
     categories = ("builtin", "readability")
+
+
+def is_file_object(f: Expression) -> bool:
+    return is_subclass(get_mypy_type(f), "io.IOBase")
 
 
 def check(node: WithStmt, errors: list[Error]) -> None:
     match node:
         case WithStmt(
-            target=[NameExpr(node=Var(type=ty)) as resource],
+            target=[NameExpr() as f],
             body=Block(
                 body=[
                     ForStmt(
-                        index=NameExpr(),
+                        index=NameExpr() as for_target,
+                        expr=source,
                         body=Block(
                             body=[
                                 ExpressionStmt(
                                     expr=CallExpr(
                                         callee=MemberExpr(
-                                            expr=NameExpr() as file,
+                                            expr=NameExpr() as write_base,
                                             name="write",
-                                        )
+                                        ),
+                                        args=[write_arg],
                                     )
                                 )
                             ]
                         ),
+                        is_async=False,
+                        else_body=None,
                     ) as for_stmt
                 ]
             ),
-        ) if str(ty).startswith("io.") and resource.fullname == file.fullname:
-            errors.append(ErrorInfo.from_node(for_stmt))
+        ) if is_file_object(f) and is_equivalent(f, write_base):
+            old = stringify(for_stmt)
+
+            if is_equivalent(for_target, write_arg):
+                new = stringify(source)
+            else:
+                new = f"{stringify(write_arg)} for {stringify(for_target)} in {stringify(source)}"
+
+            msg = f"Replace `{old}` with `{stringify(f)}.writelines({new})`"
+
+            errors.append(ErrorInfo.from_node(for_stmt, msg))

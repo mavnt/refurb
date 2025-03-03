@@ -1,22 +1,8 @@
 from dataclasses import dataclass
 
-from mypy.nodes import (
-    ArgKind,
-    BytesExpr,
-    CallExpr,
-    ComplexExpr,
-    DictExpr,
-    Expression,
-    FloatExpr,
-    IntExpr,
-    ListExpr,
-    NameExpr,
-    StrExpr,
-    TupleExpr,
-    Var,
-)
+from mypy.nodes import ArgKind, CallExpr, NameExpr
 
-from refurb.checks.common import stringify
+from refurb.checks.common import get_mypy_type, is_same_type, stringify
 from refurb.error import Error
 
 
@@ -59,25 +45,18 @@ class ErrorInfo(Error):
     categories = ("readability",)
 
 
-FUNC_NAMES = {
-    "builtins.bool": (None, ""),
-    "builtins.bytes": (BytesExpr, ""),
-    "builtins.complex": (ComplexExpr, ""),
-    "builtins.dict": (DictExpr, ".copy()"),
-    "builtins.float": (FloatExpr, ""),
-    "builtins.int": (IntExpr, ""),
-    "builtins.list": (ListExpr, ".copy()"),
-    "builtins.str": (StrExpr, ""),
-    "builtins.tuple": (TupleExpr, ""),
-    "tuple[]": (TupleExpr, ""),
+FUNC_NAME_MAPPING = {
+    "builtins.bool": ("", bool),
+    "builtins.bytes": ("", bytes),
+    "builtins.complex": ("", complex),
+    "builtins.dict": (".copy()", dict, "os._Environ"),
+    "builtins.float": ("", float),
+    "builtins.int": ("", int),
+    "builtins.list": (".copy()", list),
+    "builtins.set": (".copy()", set),
+    "builtins.str": ("", str),
+    "builtins.tuple": ("", tuple),
 }
-
-
-def is_boolean_literal(node: Expression) -> bool:
-    return isinstance(node, NameExpr) and node.fullname in {
-        "builtins.True",
-        "builtins.False",
-    }
 
 
 def check(node: CallExpr, errors: list[Error]) -> None:
@@ -85,23 +64,12 @@ def check(node: CallExpr, errors: list[Error]) -> None:
         case CallExpr(
             callee=NameExpr(fullname=fullname, name=name),
             args=[arg],
-            arg_kinds=[arg_kind],
-        ) if arg_kind != ArgKind.ARG_STAR2 and fullname in FUNC_NAMES:
-            node_type, suffix = FUNC_NAMES[fullname]
+            arg_kinds=[ArgKind.ARG_POS],
+        ) if found := FUNC_NAME_MAPPING.get(fullname):
+            suffix, *expected_types = found
 
-            if (type(arg) == node_type) or (is_boolean_literal(arg) and name == "bool"):
-                pass
-
-            else:
-                match arg:
-                    case NameExpr(node=Var(type=ty)) if (
-                        str(ty).startswith(fullname)
-                        or (str(ty).lower().startswith("tuple[") and name == "tuple")
-                    ):
-                        pass
-
-                    case _:
-                        return
+            if not is_same_type(get_mypy_type(arg), *expected_types):
+                return
 
             expr = stringify(arg)
 

@@ -9,6 +9,13 @@ _ = t[:]
 _ = barray[:]
 
 
+class Wrapper:
+    l: list[int]
+
+w = Wrapper()
+_ = w.l[:]
+
+
 # these should not
 
 _ = nums.copy()
@@ -32,3 +39,7 @@ _ = s[:]
 
 b = b"abc"
 _ = b[:]
+
+
+# special case that conflicts with FURB118, ignore
+map(lambda x: x[:], [[]])  # noqa: FURB118

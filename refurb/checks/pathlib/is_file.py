@@ -1,8 +1,8 @@
 from dataclasses import dataclass
 
-from mypy.nodes import BytesExpr, CallExpr, NameExpr, RefExpr, StrExpr, Var
+from mypy.nodes import CallExpr, RefExpr
 
-from refurb.checks.common import normalize_os_path
+from refurb.checks.common import get_mypy_type, is_same_type, normalize_os_path
 from refurb.checks.pathlib.util import is_pathlike
 from refurb.error import Error
 
@@ -51,23 +51,14 @@ def check(node: CallExpr, errors: list[Error]) -> None:
                 return
 
             if is_pathlike(arg):
-                replace = f"x.{new_name}()"
+                new = f"x.{new_name}()"
+
+            elif is_same_type(get_mypy_type(arg), str, bytes):
+                new = f"Path(x).{new_name}()"
 
             else:
-                match arg:
-                    case BytesExpr() | StrExpr():
-                        pass
+                return
 
-                    case NameExpr(node=Var(type=ty)) if (
-                        str(ty) in {"builtins.str", "builtins.bytes"}
-                    ):
-                        pass
+            msg = f"Replace `{normalized_name}(x)` with `{new}`"
 
-                    case _:
-                        return
-
-                replace = f"Path(x).{new_name}()"
-
-            errors.append(
-                ErrorInfo.from_node(node, f"Replace `{normalized_name}(x)` with `{replace}`")
-            )
+            errors.append(ErrorInfo.from_node(node, msg))

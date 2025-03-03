@@ -34,6 +34,19 @@ _ = str(g)
 t = (1, 2, 3)
 _ = tuple(t)
 
+def func() -> bool:
+    return True
+
+_ = bool(func())
+
+s = {1}
+_ = set(s)
+_ = set({1})
+
+import os
+
+_ = dict(os.environ)
+
 
 # these will not
 
@@ -47,3 +60,5 @@ _ = str(123)
 _ = tuple([1, 2, 3])
 _ = int("0xFF")
 _ = dict(**d)  # noqa: FURB173
+_ = int(t)  # type: ignore
+_ = int(*123)  # type: ignore

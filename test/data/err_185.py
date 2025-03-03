@@ -11,13 +11,23 @@ _ = set() | y.copy()
 _ = x.copy() | {} | x.copy()
 
 
-
 class C:
-    def copy(self) -> dict:
-        return {}
+    d: dict[str, str]
 
-c = C()
+
+_ = C().d.copy() | {}
+
+import os
+
+_ = os.environ.copy() | {}
 
 
 # these should not
-_ = c.copy() | {}
+
+class NotADict:
+    def copy(self) -> dict:
+        return {}
+
+nd = NotADict()
+
+_ = nd.copy() | {}

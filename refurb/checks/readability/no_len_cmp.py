@@ -13,16 +13,23 @@ from mypy.nodes import (
     IntExpr,
     ListExpr,
     MatchStmt,
+    MemberExpr,
     NameExpr,
     Node,
     OpExpr,
-    StrExpr,
     TupleExpr,
     UnaryExpr,
-    Var,
     WhileStmt,
 )
 
+from refurb.checks.common import (
+    get_mypy_type,
+    is_mapping,
+    is_same_type,
+    is_sized,
+    mypy_type_to_python_type,
+    stringify,
+)
 from refurb.error import Error
 from refurb.visitor import METHOD_NODE_MAPPINGS, TraverserVisitor
 
@@ -63,46 +70,9 @@ class ErrorInfo(Error):
     categories = ("iterable", "truthy")
 
 
-CONTAINER_TYPES = {
-    "builtins.list",
-    "builtins.tuple",
-    "tuple[",
-    "builtins.dict",
-    "builtins.set",
-    "builtins.frozenset",
-    "builtins.str",
-    "Tuple",
-}
-
-
-def is_builtin_container_type(ty: str | None) -> bool:
-    # Kept for compatibility with older Mypy versions
-    if not ty:
-        return False  # pragma: no cover
-
-    return any(ty.startswith(x) for x in CONTAINER_TYPES)
-
-
-def is_builtin_container_like(node: Expression) -> bool:
-    match node:
-        case NameExpr(node=Var(type=ty)) if is_builtin_container_type(str(ty)):
-            return True
-
-        case CallExpr(callee=NameExpr(fullname=name)) if is_builtin_container_type(name):
-            return True
-
-        case DictExpr() | ListExpr() | StrExpr() | TupleExpr():
-            return True
-
-    return False
-
-
 def is_len_call(node: CallExpr) -> bool:
     match node:
-        case CallExpr(
-            callee=NameExpr(fullname="builtins.len"),
-            args=[arg],
-        ) if is_builtin_container_like(arg):
+        case CallExpr(callee=NameExpr(fullname="builtins.len"), args=[arg]) if is_sized(arg):
             return True
 
     return False
@@ -115,6 +85,20 @@ IS_INT_COMPARISON_TRUTHY: dict[tuple[str, int], bool] = {
     ("!=", 0): True,
     (">=", 1): True,
 }
+
+
+def simplify_len_call(expr: Expression) -> Expression:
+    match expr:
+        case CallExpr(callee=NameExpr(fullname="builtins.list"), args=[arg]):
+            return simplify_len_call(arg)
+
+        case CallExpr(
+            callee=MemberExpr(expr=arg, name="keys" | "values"),
+            args=[],
+        ) if is_mapping(arg):
+            return simplify_len_call(arg)
+
+    return expr
 
 
 class LenComparisonVisitor(TraverserVisitor):
@@ -142,39 +126,55 @@ class LenComparisonVisitor(TraverserVisitor):
         match node:
             case ComparisonExpr(
                 operators=[oper],
-                operands=[CallExpr() as call, IntExpr(value=num)],
+                operands=[CallExpr(args=[arg]) as call, IntExpr(value=num)],
             ) if is_len_call(call):
                 is_truthy = IS_INT_COMPARISON_TRUTHY.get((oper, num))
 
                 if is_truthy is None:
                     return
 
-                expr = "x" if is_truthy else "not x"
+                arg = simplify_len_call(arg)
 
-                self.errors.append(
-                    ErrorInfo.from_node(node, f"Replace `len(x) {oper} {num}` with `{expr}`")
-                )
+                old = stringify(node)
+                new = stringify(arg)
+
+                if not is_truthy:
+                    new = f"not {new}"
+
+                msg = f"Replace `{old}` with `{new}`"
+
+                self.errors.append(ErrorInfo.from_node(node, msg))
 
             case ComparisonExpr(
                 operators=["==" | "!=" as oper],
                 operands=[
-                    NameExpr() as name,
-                    (ListExpr() | DictExpr()) as expr,
+                    lhs,
+                    (
+                        ListExpr(items=[])
+                        | DictExpr(items=[])
+                        | TupleExpr(items=[])
+                        | CallExpr(
+                            callee=NameExpr(fullname="builtins.set" | "builtins.frozenset"),
+                            args=[],
+                        )
+                    ) as rhs,
                 ],
-            ) if is_builtin_container_like(name):
-                if expr.items:  # type: ignore
-                    return
+            ) if is_same_type(get_mypy_type(lhs), mypy_type_to_python_type(get_mypy_type(rhs))):
+                old = stringify(node)
+                new = stringify(lhs)
 
-                old_expr = "[]" if isinstance(expr, ListExpr) else "{}"
-                expr = "not x" if oper == "==" else "x"
+                if oper == "==":
+                    new = f"not {new}"
 
-                self.errors.append(
-                    ErrorInfo.from_node(node, f"Replace `x {oper} {old_expr}` with `{expr}`")
-                )
+                msg = f"Replace `{old}` with `{new}`"
+
+                self.errors.append(ErrorInfo.from_node(node, msg))
 
     def visit_call_expr(self, node: CallExpr) -> None:
         if is_len_call(node):
-            self.errors.append(ErrorInfo.from_node(node, "Replace `len(x)` with `x`"))
+            msg = f"Replace `{stringify(node)}` with `{stringify(node.args[0])}`"
+
+            self.errors.append(ErrorInfo.from_node(node, msg))
 
 
 ConditionLikeNode = (
@@ -206,10 +206,10 @@ def check_condition_like(
                 if guard:
                     visitor.accept(guard)
 
-        case (GeneratorExpr(condlists=conditions) | DictionaryComprehension(condlists=conditions)):
+        case GeneratorExpr(condlists=conditions) | DictionaryComprehension(condlists=conditions):
             for condition in conditions:
                 for expr in condition:
                     visitor.accept(expr)
 
-        case (ConditionalExpr(cond=expr) | WhileStmt(expr=expr) | AssertStmt(expr=expr)):
+        case ConditionalExpr(cond=expr) | WhileStmt(expr=expr) | AssertStmt(expr=expr):
             visitor.accept(expr)

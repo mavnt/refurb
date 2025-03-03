@@ -1,20 +1,29 @@
 from collections.abc import Callable
 from itertools import chain, combinations, starmap
+from typing import Any, TypeGuard
 
 from mypy.nodes import (
     ArgKind,
+    AssignmentExpr,
     AssignmentStmt,
+    AwaitExpr,
     Block,
     BytesExpr,
     CallExpr,
+    CastExpr,
     ComparisonExpr,
     ComplexExpr,
+    ConditionalExpr,
+    DelStmt,
     DictExpr,
     DictionaryComprehension,
     Expression,
+    ExpressionStmt,
     FloatExpr,
     ForStmt,
+    FuncDef,
     GeneratorExpr,
+    IfStmt,
     IndexExpr,
     IntExpr,
     LambdaExpr,
@@ -30,10 +39,16 @@ from mypy.nodes import (
     StarExpr,
     Statement,
     StrExpr,
+    SymbolNode,
     TupleExpr,
+    TypeAlias,
+    TypeInfo,
     UnaryExpr,
+    Var,
 )
+from mypy.types import AnyType, CallableType, Instance, TupleType, Type, TypeAliasType
 
+from refurb import types
 from refurb.error import Error
 from refurb.visitor import TraverserVisitor
 
@@ -210,8 +225,8 @@ def get_common_expr_in_comparison_chain(
         case (
             ComparisonExpr(operators=[lhs_oper], operands=[a, b]),
             ComparisonExpr(operators=[rhs_oper], operands=[c, d]),
-        ) if (
-            lhs_oper == rhs_oper == cmp_oper and (indices := get_common_expr_positions(a, b, c, d))
+        ) if lhs_oper == rhs_oper == cmp_oper and (
+            indices := get_common_expr_positions(a, b, c, d)
         ):
             return a, indices
 
@@ -270,11 +285,58 @@ def is_type_none_call(node: Expression) -> bool:
     match node:
         case CallExpr(
             callee=NameExpr(fullname="builtins.type"),
-            args=[NameExpr(fullname="builtins.None")],
-        ):
+            args=[arg],
+        ) if is_none_literal(arg):
             return True
 
     return False
+
+
+def is_none_literal(node: Node) -> TypeGuard[NameExpr]:
+    return isinstance(node, NameExpr) and node.fullname == "builtins.None"
+
+
+def get_fstring_parts(expr: Expression) -> list[tuple[bool, Expression, str]]:
+    match expr:
+        case CallExpr(
+            callee=MemberExpr(
+                expr=StrExpr(value="{:{}}"),
+                name="format",
+            ),
+            args=[arg, StrExpr(value=format_arg)],
+            arg_kinds=[ArgKind.ARG_POS, ArgKind.ARG_POS],
+        ):
+            return [(True, arg, format_arg)]
+
+        case CallExpr(
+            callee=MemberExpr(
+                expr=StrExpr(value=""),
+                name="join",
+            ),
+            args=[ListExpr(items=items)],
+            arg_kinds=[ArgKind.ARG_POS],
+        ):
+            exprs: list[tuple[bool, Expression, str]] = []
+
+            had_at_least_one_fstring_part = False
+
+            for item in items:
+                if isinstance(item, StrExpr):
+                    exprs.append((False, item, ""))
+
+                elif tmp := get_fstring_parts(item):
+                    had_at_least_one_fstring_part = True
+                    exprs.extend(tmp)
+
+                else:
+                    return []
+
+            if not had_at_least_one_fstring_part:
+                return []
+
+            return exprs
+
+    return []
 
 
 def stringify(node: Node) -> str:
@@ -311,7 +373,7 @@ def _stringify(node: Node) -> str:
             return str(value)
 
         case StrExpr(value=value):
-            value = value.replace('"', r"\"")
+            value = repr(value)[1:-1].replace('"', r"\"")
 
             return f'"{value}"'
 
@@ -337,6 +399,24 @@ def _stringify(node: Node) -> str:
             return f"({inner})"
 
         case CallExpr(arg_names=arg_names, arg_kinds=arg_kinds, args=args):
+            if fstring_parts := get_fstring_parts(node):
+                output = 'f"'
+
+                for is_format_arg, arg, fmt in fstring_parts:
+                    if not is_format_arg:
+                        assert isinstance(arg, StrExpr)
+
+                        output += _stringify(arg)[1:-1]
+
+                    elif fmt:
+                        output += f"{{{_stringify(arg)}:{fmt}}}"
+
+                    else:
+                        output += f"{{{_stringify(arg)}}}"
+
+                output += '"'
+                return output
+
             call_args: list[str] = []
 
             for arg_name, kind, arg in zip(arg_names, arg_kinds, args):
@@ -387,7 +467,7 @@ def _stringify(node: Node) -> str:
             arg_names=arg_names,
             arg_kinds=arg_kinds,
             body=Block(body=[ReturnStmt(expr=Expression() as expr)]),
-        ) if (all(kind == ArgKind.ARG_POS for kind in arg_kinds) and all(arg_names)):
+        ) if all(kind == ArgKind.ARG_POS for kind in arg_kinds) and all(arg_names):
             if arg_names:
                 args = " "  # type: ignore
                 args += ", ".join(arg_names)  # type: ignore
@@ -412,6 +492,33 @@ def _stringify(node: Node) -> str:
         case AssignmentStmt(lvalues=[lhs], rvalue=rhs):
             return f"{stringify(lhs)} = {stringify(rhs)}"
 
+        case IfStmt(expr=[expr], body=[Block(body=[stmt])], else_body=None):
+            return f"if {_stringify(expr)}: {_stringify(stmt)}"
+
+        case ForStmt(
+            index=index,
+            expr=expr,
+            body=Block(body=[stmt]),
+            else_body=None,
+            is_async=False,
+        ):
+            return f"for {_stringify(index)} in {_stringify(expr)}: {_stringify(stmt)}"
+
+        case ConditionalExpr(if_expr=if_true, cond=cond, else_expr=if_false):
+            return f"{_stringify(if_true)} if {_stringify(cond)} else {_stringify(if_false)}"
+
+        case DelStmt(expr=expr):
+            return f"del {_stringify(expr)}"
+
+        case ExpressionStmt(expr=expr):
+            return _stringify(expr)
+
+        case AwaitExpr(expr=expr):
+            return f"await {_stringify(expr)}"
+
+        case AssignmentExpr(target=lhs, value=rhs):
+            return f"{_stringify(lhs)} := {_stringify(rhs)}"
+
     raise ValueError
 
 
@@ -425,3 +532,252 @@ def slice_expr_to_slice_call(expr: SliceExpr) -> str:
         args.append(stringify(expr.stride))
 
     return f"slice({', '.join(args)})"
+
+
+TypeLike = type | str | object | None
+
+
+def is_same_type(ty: Type | SymbolNode | None, *expected: TypeLike) -> bool:
+    """
+    Check if the type `ty` matches any of the `expected` types. `ty` must be a Mypy type object,
+    but the expected types can be any of the following:
+
+    * Built in type like `str`, `bool`, etc.
+    * Fully-qualified type name (ie, `pathlib.Path`) as a `str`
+    * `None`
+    * `typing.Any`
+
+    When `typing.Any` is used it will not match all types, instead it will only matches explicit
+    `Any` types.
+    """
+
+    return any(_is_same_type(ty, t) for t in expected)
+
+
+SIMPLE_TYPES: dict[str, type | object | None] = {
+    "Any": Any,
+    "None": None,
+    "builtins.bool": bool,
+    "builtins.bytearray": bytearray,
+    "builtins.bytes": bytes,
+    "builtins.complex": complex,
+    "builtins.dict": dict,
+    "builtins.float": float,
+    "builtins.frozenset": frozenset,
+    "builtins.int": int,
+    "builtins.list": list,
+    "builtins.set": set,
+    "builtins.str": str,
+    "builtins.tuple": tuple,
+}
+
+
+def _is_same_type(ty: Type | SymbolNode | None, expected: TypeLike) -> bool:
+    if ty is expected is None:
+        return True
+
+    if isinstance(ty, TypeAliasType):
+        if not ty.alias:
+            return False  # pragma: no cover
+
+        return _is_same_type(ty.alias.target, expected)
+
+    if isinstance(ty, TupleType) and expected is tuple:
+        return True
+
+    if isinstance(ty, AnyType) and expected is Any:
+        return True
+
+    if isinstance(ty, Instance | TypeInfo):
+        str_type = ty.type.fullname if isinstance(ty, Instance) else ty.fullname
+
+        if str_type in SIMPLE_TYPES and SIMPLE_TYPES[str_type] is expected:
+            return True
+
+        if isinstance(expected, str) and str_type == expected:
+            return True
+
+    return False
+
+
+def _get_builtin_mypy_type(name: str) -> Instance | None:
+    if (sym := types.BUILTINS_MYPY_FILE.names.get(name)) and isinstance(sym.node, TypeInfo):
+        return Instance(sym.node, [])
+
+    return None  # pragma: no cover
+
+
+def get_mypy_type(node: Node) -> Type | SymbolNode | None:
+    # forward declaration to make Mypy happy
+    ty: Type | SymbolNode | None
+
+    match node:
+        case StrExpr():
+            return _get_builtin_mypy_type("str")
+
+        case BytesExpr():
+            return _get_builtin_mypy_type("bytes")
+
+        case IntExpr():
+            return _get_builtin_mypy_type("int")
+
+        case FloatExpr():
+            return _get_builtin_mypy_type("float")
+
+        case ComplexExpr():
+            return _get_builtin_mypy_type("complex")
+
+        case NameExpr():
+            if is_bool_literal(node):
+                return _get_builtin_mypy_type("bool")
+
+            if node.node:
+                return get_mypy_type(node.node)
+
+        case DictExpr():
+            return _get_builtin_mypy_type("dict")
+
+        case ListExpr():
+            return _get_builtin_mypy_type("list")
+
+        case TupleExpr():
+            return _get_builtin_mypy_type("tuple")
+
+        case SetExpr():
+            return _get_builtin_mypy_type("set")
+
+        case Var(type=ty) | FuncDef(type=ty):
+            return ty
+
+        case TypeInfo() | TypeAlias() | MypyFile():
+            return node
+
+        case MemberExpr(expr=lhs, name=name):
+            ty = get_mypy_type(lhs)
+
+            if (
+                isinstance(ty, MypyFile | TypeInfo)
+                and (member := ty.names.get(name))
+                and member.node
+            ):
+                return get_mypy_type(member.node)
+
+            if isinstance(ty, Instance) and (member := ty.type.get(name)) and member.node:
+                return get_mypy_type(member.node)
+
+        case CallExpr(analyzed=CastExpr(type=ty)):
+            return ty
+
+        case CallExpr(callee=callee):
+            match get_mypy_type(callee):
+                case CallableType(ret_type=ty):
+                    return ty
+
+                case TypeAlias(target=ty):
+                    return ty
+
+                case TypeInfo() as sym:
+                    return Instance(sym, [])
+
+        case UnaryExpr(op="not"):
+            return _get_builtin_mypy_type("bool")
+
+        case UnaryExpr(method_type=CallableType(ret_type=ty)):
+            return ty
+
+        case OpExpr(method_type=CallableType(ret_type=ty)):
+            return ty
+
+        case IndexExpr(method_type=CallableType(ret_type=ty)):
+            return ty
+
+        case AwaitExpr(expr=expr):
+            ty = get_mypy_type(expr)
+
+            # TODO: allow for any Awaitable[T] type
+            match ty:
+                case Instance(type=TypeInfo(fullname="typing.Coroutine"), args=[_, _, rtype]):
+                    return rtype
+
+                case Instance(type=TypeInfo(fullname="asyncio.tasks.Task"), args=[rtype]):
+                    return rtype
+
+        case LambdaExpr(body=Block(body=[ReturnStmt(expr=expr)])) if expr:
+            if (ty := get_mypy_type(expr)) and isinstance(ty, Type):
+                return _build_placeholder_callable(ty)
+
+        case AssignmentExpr(target=expr):
+            return get_mypy_type(expr)
+
+    return None
+
+
+def _build_placeholder_callable(rtype: Type) -> Type | None:
+    if function := _get_builtin_mypy_type("function"):
+        return CallableType([], [], [], ret_type=rtype, fallback=function)
+
+    return None  # pragma: no cover
+
+
+def mypy_type_to_python_type(ty: Type | SymbolNode | None) -> type | None:
+    match ty:
+        # TODO: return annotated types if instance has args (ie, `list[int]`)
+        case Instance(type=TypeInfo(fullname=fullname)):
+            return SIMPLE_TYPES.get(fullname)  # type: ignore
+
+    return None  # pragma: no cover
+
+
+def is_mapping(expr: Expression) -> bool:
+    return is_mapping_type(get_mypy_type(expr))
+
+
+def is_mapping_type(ty: Type | SymbolNode | None) -> bool:
+    return is_subclass(ty, "typing.Mapping")
+
+
+def is_bool_literal(node: Node) -> TypeGuard[NameExpr]:
+    return is_true_literal(node) or is_false_literal(node)
+
+
+def is_true_literal(node: Node) -> TypeGuard[NameExpr]:
+    return isinstance(node, NameExpr) and node.fullname == "builtins.True"
+
+
+def is_false_literal(node: Node) -> TypeGuard[NameExpr]:
+    return isinstance(node, NameExpr) and node.fullname == "builtins.False"
+
+
+def is_sized(node: Expression) -> bool:
+    return is_sized_type(get_mypy_type(node))
+
+
+def is_sized_type(ty: Type | SymbolNode | None) -> bool:
+    # Certain object MROs (like dict) doesn't reference Sized directly, only Collection. We might
+    # need to add more derived Sized types if Mypy doesn't fully resolve the MRO.
+
+    return is_subclass(ty, "typing.Sized", "typing.Collection")
+
+
+def is_subclass(ty: Any, *expected: TypeLike) -> bool:  # type: ignore[misc]
+    if type_info := extract_typeinfo(ty):
+        return any(is_same_type(x, *expected) for x in type_info.mro)
+
+    return False  # pragma: no cover
+
+
+def extract_typeinfo(ty: Type | SymbolNode | None) -> TypeInfo | None:
+    match ty:
+        case TypeInfo():
+            return ty  # pragma: no cover
+
+        case Instance():
+            return ty.type
+
+        case TupleType():
+            tmp = _get_builtin_mypy_type("tuple")
+            assert tmp
+
+            return tmp.type
+
+    return None  # pragma: no cover

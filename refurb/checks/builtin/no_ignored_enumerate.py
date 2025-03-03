@@ -3,15 +3,21 @@ from dataclasses import dataclass
 from mypy.nodes import (
     CallExpr,
     DictionaryComprehension,
+    Expression,
     ForStmt,
     GeneratorExpr,
     NameExpr,
     Node,
     TupleExpr,
-    Var,
 )
 
-from refurb.checks.common import check_for_loop_like, is_name_unused_in_contexts, stringify
+from refurb.checks.common import (
+    check_for_loop_like,
+    get_mypy_type,
+    is_name_unused_in_contexts,
+    is_subclass,
+    stringify,
+)
 from refurb.error import Error
 
 
@@ -66,9 +72,9 @@ def check_enumerate_call(
             TupleExpr(items=[NameExpr() as index, NameExpr() as value]),
             CallExpr(
                 callee=NameExpr(fullname="builtins.enumerate"),
-                args=[NameExpr(node=Var(type=ty)) as enumerate_arg],
+                args=[enumerate_arg],
             ),
-        ) if is_sequence_type(str(ty)):
+        ) if is_subclass(get_mypy_type(enumerate_arg), "typing.Sequence"):
             check_unused_index_or_value(index, value, contexts, errors, enumerate_arg)
 
 
@@ -77,7 +83,7 @@ def check_unused_index_or_value(
     value: NameExpr,
     contexts: list[Node],
     errors: list[Error],
-    enumerate_arg: NameExpr,
+    enumerate_arg: Expression,
 ) -> None:
     if is_name_unused_in_contexts(index, contexts):
         msg = f"Index is unused, use `for {stringify(value)} in {stringify(enumerate_arg)}` instead"  # noqa: E501
@@ -88,8 +94,3 @@ def check_unused_index_or_value(
         msg = f"Value is unused, use `for {stringify(index)} in range(len({stringify(enumerate_arg)}))` instead"  # noqa: E501
 
         errors.append(ErrorInfo.from_node(value, msg))
-
-
-# TODO: allow for any type that supports the Sequence protocol
-def is_sequence_type(ty: str) -> bool:
-    return ty.startswith(("builtins.list[", "Tuple[", "builtins.tuple[", "tuple["))

@@ -4,16 +4,22 @@ from mypy.nodes import (
     BytesExpr,
     CallExpr,
     DictExpr,
+    FloatExpr,
     IntExpr,
     ListExpr,
     NameExpr,
     OpExpr,
     StrExpr,
     TupleExpr,
-    Var,
 )
 
-from refurb.checks.common import extract_binary_oper, stringify
+from refurb.checks.common import (
+    extract_binary_oper,
+    get_mypy_type,
+    is_same_type,
+    mypy_type_to_python_type,
+    stringify,
+)
 from refurb.error import Error
 
 
@@ -49,42 +55,24 @@ class ErrorInfo(Error):
 
 def check(node: OpExpr, errors: list[Error]) -> None:
     match extract_binary_oper("or", node):
-        case (NameExpr(node=Var(type=ty)) as lhs, arg):
-            match arg:
-                case CallExpr(callee=NameExpr(fullname=fullname), args=[]):
-                    pass
+        case (
+            lhs,
+            (
+                CallExpr(callee=NameExpr(fullname="builtins.set" | "builtins.frozenset"), args=[])
+                | ListExpr(items=[])
+                | DictExpr(items=[])
+                | TupleExpr(items=[])
+                | StrExpr(value="")
+                | BytesExpr(value="")
+                | IntExpr(value=0)
+                | FloatExpr(value=0.0)
+                | NameExpr(fullname="builtins.False")
+            ) as rhs,
+        ) if (expected_type := mypy_type_to_python_type(get_mypy_type(rhs))) and is_same_type(
+            get_mypy_type(lhs), expected_type
+        ):
+            lhs_expr = stringify(lhs)
 
-                case ListExpr(items=[]):
-                    fullname = "builtins.list"
+            msg = f"Replace `{lhs_expr} or {stringify(rhs)}` with `{lhs_expr}`"
 
-                case DictExpr(items=[]):
-                    fullname = "builtins.dict"
-
-                case TupleExpr(items=[]):
-                    fullname = "builtins.tuple"
-
-                case StrExpr(value=""):
-                    fullname = "builtins.str"
-
-                case BytesExpr(value=""):
-                    fullname = "builtins.bytes"
-
-                case IntExpr(value=0):
-                    fullname = "builtins.int"
-
-                case NameExpr(fullname="builtins.False"):
-                    fullname = "builtins.bool"
-
-                case _:
-                    return
-
-            type_name = "builtins.tuple" if str(ty).lower().startswith("tuple[") else str(ty)
-
-            # Must check fullname for compatibility with older Mypy versions
-            if fullname and type_name.startswith(fullname):
-                lhs_expr = stringify(lhs)
-                rhs_expr = stringify(arg)
-
-                msg = f"Replace `{lhs_expr} or {rhs_expr}` with `{lhs_expr}`"
-
-                errors.append(ErrorInfo.from_node(node, msg))
+            errors.append(ErrorInfo.from_node(node, msg))

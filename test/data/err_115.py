@@ -74,6 +74,35 @@ assert len(nums) and True
 assert len(nums) or False
 
 
+class C:
+    l: list[int]
+
+assert C().l == []
+
+c = C()
+assert c.l == []
+
+
+from collections.abc import Mapping
+
+def mapping_check(m: Mapping[str, str]):
+    if len(m) == 0:
+        pass
+
+
+assert len(list(authors.keys())) == 0
+assert len(list(authors.values())) == 0
+assert len(list(authors)) == 0
+assert len(authors.keys()) == 0
+assert len(authors.values()) == 0
+assert len(authors) == 0
+
+
+assert fruits == frozenset()
+assert primes == set()
+assert data == ()
+
+
 # these should not
 
 if len(nums) == 1: ...
@@ -103,3 +132,7 @@ assert authors == {"author": "book"}
 assert nums <= []
 
 assert len(nums) % 2
+
+assert data == []
+assert data == {}
+assert data == set()

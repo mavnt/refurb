@@ -1,17 +1,8 @@
 from dataclasses import dataclass
 
-from mypy.nodes import (
-    AssignmentStmt,
-    CallExpr,
-    IndexExpr,
-    IntExpr,
-    NameExpr,
-    SliceExpr,
-    UnaryExpr,
-    Var,
-)
+from mypy.nodes import AssignmentStmt, CallExpr, IndexExpr, IntExpr, NameExpr, SliceExpr, UnaryExpr
 
-from refurb.checks.common import stringify, unmangle_name
+from refurb.checks.common import get_mypy_type, is_equivalent, is_same_type, stringify
 from refurb.error import Error
 
 
@@ -26,9 +17,9 @@ class ErrorInfo(Error):
     ```
     names = ["Bob", "Alice", "Charlie"]
 
-    names = reverse(names)
+    names = reversed(names)
     # or
-    names = list(reverse(names))
+    names = list(reversed(names))
     # or
     names = names[::-1]
     ```
@@ -50,56 +41,48 @@ class ErrorInfo(Error):
 def check(node: AssignmentStmt, errors: list[Error]) -> None:
     match node:
         case AssignmentStmt(
-            lvalues=[NameExpr(fullname=assign_name) as assign_ref],
+            lvalues=[assign_ref],
             rvalue=CallExpr(
                 callee=NameExpr(fullname="builtins.reversed"),
-                args=[NameExpr(fullname=reverse_name, node=Var(type=ty))],
+                args=[reverse_expr],
             ),
-        ) if (
-            unmangle_name(assign_name) == unmangle_name(reverse_name)
-            and str(ty).startswith("builtins.list[")
         ):
             pass
 
         case AssignmentStmt(
-            lvalues=[NameExpr(fullname=assign_name) as assign_ref],
+            lvalues=[assign_ref],
             rvalue=CallExpr(
                 callee=NameExpr(fullname="builtins.list"),
                 args=[
                     CallExpr(
                         callee=NameExpr(fullname="builtins.reversed"),
-                        args=[NameExpr(fullname=reverse_name, node=Var(type=ty))],
+                        args=[reverse_expr],
                     ),
                 ],
             ),
-        ) if (
-            unmangle_name(assign_name) == unmangle_name(reverse_name)
-            and str(ty).startswith("builtins.list[")
         ):
             pass
 
         case AssignmentStmt(
-            lvalues=[NameExpr(fullname=assign_name) as assign_ref],
+            lvalues=[assign_ref],
             rvalue=IndexExpr(
-                base=NameExpr(fullname=reverse_name, node=Var(type=ty)),
+                base=reverse_expr,
                 index=SliceExpr(
                     begin_index=None,
                     end_index=None,
                     stride=UnaryExpr(op="-", expr=IntExpr(value=1)),
                 ),
             ),
-        ) if (
-            unmangle_name(assign_name) == unmangle_name(reverse_name)
-            and str(ty).startswith("builtins.list[")
         ):
             pass
 
         case _:
             return
 
-    old = stringify(node)
-    new = f"{stringify(assign_ref)}.reverse()"
+    if is_equivalent(assign_ref, reverse_expr) and is_same_type(get_mypy_type(reverse_expr), list):
+        old = stringify(node)
+        new = f"{stringify(assign_ref)}.reverse()"
 
-    msg = f"Replace `{old}` with `{new}`"
+        msg = f"Replace `{old}` with `{new}`"
 
-    errors.append(ErrorInfo.from_node(node, msg))
+        errors.append(ErrorInfo.from_node(node, msg))
